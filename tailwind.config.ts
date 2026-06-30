@@ -11,18 +11,22 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
+        // AstraToko brand colors (dari brand guidelines)
         astrapay: {
-          blue: '#003087',
-          'blue-light': '#0050CC',
-          'blue-pale': '#E8F0FE',
+          blue: '#1A3CC4',      // primary blue
+          'blue-light': '#5C82E8', // blue lighter
+          'blue-pale': '#EEF3FF',  // blue tint
           red: '#E31837',
           gold: '#F5A623',
           gray: '#F5F7FA',
         },
         app: {
-          blue: '#3B5BDB',
-          'blue-light': '#4C6EF5',
-          'blue-pale': '#EEF2FF',
+          blue: '#1A3CC4',      // primary blue
+          'blue-light': '#5C82E8',
+          'blue-pale': '#EEF3FF',
+          cream: '#F1EEE3',     // warm background
+          surface: '#F5F2EA',   // card surface
+          border: '#E3DFD0',    // border/divider
         },
       },
       fontFamily: {
