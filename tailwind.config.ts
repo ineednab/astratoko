@@ -19,9 +19,14 @@ const config: Config = {
           gold: '#F5A623',
           gray: '#F5F7FA',
         },
+        app: {
+          blue: '#3B5BDB',
+          'blue-light': '#4C6EF5',
+          'blue-pale': '#EEF2FF',
+        },
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
+        sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
       },
     },
   },
