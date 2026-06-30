@@ -115,6 +115,7 @@ function CheckoutModal({ product, onClose }: { product: Product; onClose: () => 
               {formatRp(product.price)}
             </p>
             <div className="bg-gray-50 rounded-2xl p-3 inline-flex mb-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=astratoko-${SELLER.slug}-${product.id}&bgcolor=ffffff&color=3B5BDB&margin=2`}
                 alt="QRIS"
