@@ -3,50 +3,92 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #F1EEE3;
+  --foreground: #0D1B4B;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display), system-ui, sans-serif;
+}
+
+/* Prices, codes, IDs — JetBrains Mono */
+.font-data {
+  font-family: var(--font-mono), ui-monospace, monospace;
 }
 
 @layer components {
+  /* Buttons — brand guidelines: 50px height, 16px radius, Space Grotesk 600 */
   .btn-primary {
-    @apply bg-astrapay-blue text-white px-6 py-3 rounded-xl font-semibold hover:bg-astrapay-blue-light transition-colors duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-brand-primary text-brand-surface font-semibold rounded-lg
+           h-btn px-6 min-w-btn
+           inline-flex items-center justify-center gap-2
+           font-display
+           transition-colors duration-fast ease-fast
+           hover:bg-brand-mid active:scale-[0.98]
+           disabled:opacity-40 disabled:cursor-not-allowed;
   }
   .btn-secondary {
-    @apply border-2 border-astrapay-blue text-astrapay-blue px-6 py-3 rounded-xl font-semibold hover:bg-astrapay-blue-pale transition-colors duration-200 active:scale-[0.98];
+    @apply border-2 border-brand-primary text-brand-primary bg-transparent font-semibold rounded-lg
+           h-btn px-6 min-w-btn
+           inline-flex items-center justify-center gap-2
+           font-display
+           transition-colors duration-fast ease-fast
+           hover:bg-brand-pale active:scale-[0.98];
   }
+  .btn-ghost {
+    @apply text-brand-primary bg-transparent font-semibold
+           inline-flex items-center justify-center gap-2
+           font-display
+           transition-colors duration-fast ease-fast
+           hover:underline active:opacity-70;
+  }
+  .btn-destructive {
+    @apply bg-brand-error text-brand-surface font-semibold rounded-lg
+           h-btn px-6 min-w-btn
+           inline-flex items-center justify-center gap-2
+           font-display
+           transition-colors duration-fast ease-fast
+           hover:opacity-90 active:scale-[0.98];
+  }
+
+  /* Cards — 2px border, NO shadow */
   .card {
-    @apply bg-white rounded-2xl shadow-sm border border-gray-100 p-6;
+    @apply bg-brand-card border-2 border-brand-border rounded-lg p-4;
+  }
+  .card-highlight {
+    @apply bg-brand-primary border-2 border-brand-primary rounded-lg p-4 text-brand-surface;
+  }
+
+  /* Input — 52px height, 10px radius, 2px border */
+  .input {
+    @apply h-input w-full rounded-sm border-2 border-brand-border bg-white px-4
+           text-body text-gray-900
+           transition-colors duration-fast ease-fast
+           focus:outline-none focus:border-brand-primary focus:bg-brand-pale
+           placeholder:text-gray-400;
+  }
+
+  /* Price / code display */
+  .price {
+    @apply font-mono text-mono font-medium;
   }
 }
 
+/* Animations */
 @keyframes fadein {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.animate-fadein {
-  animation: fadein 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.animate-fadein-delay {
-  animation: fadein 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
-}
-
-.animate-fadein-delay-2 {
-  animation: fadein 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
-}
+.animate-fadein         { animation: fadein 250ms ease-in-out both; }
+.animate-fadein-delay   { animation: fadein 250ms ease-in-out 100ms both; }
+.animate-fadein-delay-2 { animation: fadein 250ms ease-in-out 200ms both; }
 
 @media (prefers-reduced-motion: reduce) {
   .animate-fadein,
