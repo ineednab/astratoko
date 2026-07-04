@@ -213,6 +213,7 @@ function AnimatedPhone() {
       setTimeout(() => setPopupVisible(true), 350)
     }, 3000)
     return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const scene = scenes[idx]

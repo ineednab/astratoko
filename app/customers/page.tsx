@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { ChevronRight, Users, Share2, MessageCircle, Gift, Search } from 'lucide-react'
+import { ChevronRight, Share2, MessageCircle, Gift, Search } from 'lucide-react'
 import { formatRp } from '@/lib/utils'
 import { Sidebar } from '@/components/Sidebar'
 import type { Seller, Order, Product } from '@/lib/types'
