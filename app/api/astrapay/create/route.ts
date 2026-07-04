@@ -3,7 +3,7 @@ import { createPayment } from '@/lib/astrapay'
 
 export async function POST(req: Request) {
   try {
-    const { merchantTransactionId, amount, description, merchantUserId } = await req.json()
+    const { merchantTransactionId, amount, description } = await req.json()
 
     if (!merchantTransactionId || !amount) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -13,7 +13,6 @@ export async function POST(req: Request) {
       merchantTransactionId,
       amount: Number(amount),
       description: description ?? 'AstraToko Payment',
-      merchantUserId,
     })
 
     if (result.error) {
