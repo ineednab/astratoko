@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Fragment } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ArrowRight, Share2, Star, X, ShoppingBag, CheckCircle, MessageCircle, TrendingUp, Bell, MapPin, Truck, ShoppingCart, ChevronDown } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Share2, Star, X, ShoppingBag, CheckCircle, MessageCircle, TrendingUp, Bell, MapPin, Truck, ShoppingCart, ChevronDown, Home, LayoutGrid, Package, User } from 'lucide-react'
 import { formatRp } from '@/lib/utils'
 import { getCategoryStyle } from '@/lib/categories'
 import Confetti from '@/components/Confetti'
@@ -1229,6 +1229,236 @@ function CheckoutModal({
   )
 }
 
+// ── Tab types & demo data ─────────────────────────────────────────────────────
+
+type ActiveTab = 'beranda' | 'kategori' | 'pesanan' | 'akun'
+
+const DEMO_ORDERS_DATA = [
+  { id: 'ORD-3F2A', store: 'Toko Rizky',     storeInitial: 'R', product: 'Brake Pad XYZ Motor',      category: 'Rem',     price: 85_000,  date: '2 hari lalu'    },
+  { id: 'ORD-7B1C', store: 'Toko Rizky',     storeInitial: 'R', product: 'Oli Federal Matic 1L',      category: 'Oli',     price: 52_000,  date: '1 minggu lalu'  },
+  { id: 'ORD-2E9D', store: 'Toko Rizky',     storeInitial: 'R', product: 'Helm Half Face SNI Merah',  category: 'Helm',    price: 185_000, date: '2 minggu lalu'  },
+  { id: 'ORD-5A4F', store: 'Warung Bu Sari', storeInitial: 'W', product: 'Beras Premium 5kg',         category: 'Sembako', price: 75_000,  date: '3 minggu lalu'  },
+]
+
+const DEMO_BUYER_DATA = {
+  name: 'Budi Santoso',
+  phone: '+62 812-xxxx-4521',
+  astraPoints: 350,
+  loyaltyCards: [
+    { store: 'Toko Rizky',     storeInitial: 'R', color: '#3B5BDB', stamps: 3, maxStamps: 10, reward: 'Gratis ongkir pembelian berikutnya' },
+    { store: 'Warung Bu Sari', storeInitial: 'W', color: '#2f9e44', stamps: 1, maxStamps: 10, reward: 'Diskon 10% di pembelian ke-10'      },
+  ],
+}
+
+// ── Loyalty Stamp Card ────────────────────────────────────────────────────────
+
+function LoyaltyStampCard({ store, storeInitial, color, stamps, maxStamps, reward }: {
+  store: string; storeInitial: string; color: string; stamps: number; maxStamps: number; reward: string
+}) {
+  return (
+    <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+      <div className="flex items-center gap-2.5 mb-3">
+        <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 text-white font-extrabold text-sm" style={{ backgroundColor: color }}>
+          {storeInitial}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-gray-900 text-sm">{store}</p>
+          <p className="text-[10px] text-gray-400">{stamps} dari {maxStamps} stamp terkumpul</p>
+        </div>
+      </div>
+      <div className="flex gap-1.5 flex-wrap mb-3">
+        {Array.from({ length: maxStamps }).map((_, i) => (
+          <div key={i} className={`w-[26px] h-[26px] rounded-full flex items-center justify-center ${i < stamps ? 'bg-app-blue' : 'bg-gray-100'}`}>
+            {i < stamps && <Star size={11} className="text-white" fill="currentColor" />}
+          </div>
+        ))}
+      </div>
+      <div className="bg-amber-50 rounded-xl px-3 py-2 flex items-center gap-2">
+        <Star size={11} className="text-astrapay-gold flex-shrink-0" fill="currentColor" />
+        <p className="text-[10px] text-amber-800">{reward}</p>
+      </div>
+    </div>
+  )
+}
+
+// ── Kategori Tab Panel ────────────────────────────────────────────────────────
+
+function KategoriPanel({ categories, categoryFilter, products, onSelect }: {
+  categories: string[]
+  categoryFilter: string
+  products: Product[]
+  onSelect: (cat: string) => void
+}) {
+  return (
+    <div className="px-4 pt-4 pb-24">
+      <p className="font-extrabold text-gray-900 text-base mb-4">Kategori Produk</p>
+      <div className="grid grid-cols-2 gap-3">
+        {['all', ...categories].map((cat) => {
+          const { color, Icon } = getCategoryStyle(cat === 'all' ? '' : cat)
+          const count = cat === 'all' ? products.length : products.filter((p) => p.category === cat).length
+          const isActive = categoryFilter === cat
+          return (
+            <button
+              key={cat}
+              onClick={() => onSelect(cat)}
+              className={`flex items-center gap-3 p-3.5 rounded-2xl border-2 text-left transition-all ${isActive ? 'border-app-blue bg-app-blue-pale' : 'border-gray-100 bg-white hover:border-gray-200'}`}
+            >
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: cat === 'all' ? '#6366f1' : color }}>
+                {cat === 'all' ? <LayoutGrid size={16} className="text-white" /> : <Icon size={16} className="text-white" />}
+              </div>
+              <div className="min-w-0">
+                <p className={`text-sm font-semibold truncate ${isActive ? 'text-app-blue' : 'text-gray-900'}`}>{cat === 'all' ? 'Semua' : cat}</p>
+                <p className="text-[10px] text-gray-400">{count} produk</p>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Pesanan Tab Panel ─────────────────────────────────────────────────────────
+
+function PesananPanel({ isDemoMode }: { isDemoMode: boolean }) {
+  const orders = isDemoMode ? DEMO_ORDERS_DATA : []
+  return (
+    <div className="px-4 pt-4 pb-24">
+      <p className="font-extrabold text-gray-900 text-base mb-4">Pesanan Saya</p>
+      {orders.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
+            <Package size={28} className="text-gray-400" />
+          </div>
+          <p className="font-semibold text-gray-700 mb-1">Belum ada pesanan</p>
+          <p className="text-gray-400 text-sm">Mulai belanja dan pesananmu akan muncul di sini.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {orders.map((order) => {
+            const { color, Icon } = getCategoryStyle(order.category)
+            return (
+              <div key={order.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: color }}>
+                    <Icon size={16} className="text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm truncate">{order.product}</p>
+                    <p className="text-[11px] text-gray-400">{order.store} · {order.date}</p>
+                    <div className="flex items-center justify-between mt-1.5">
+                      <p className="font-bold text-app-blue text-sm">{formatRp(order.price)}</p>
+                      <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">Lunas</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Akun Tab Panel ────────────────────────────────────────────────────────────
+
+function AkunPanel({ isDemoMode }: { isDemoMode: boolean }) {
+  const buyer = isDemoMode ? DEMO_BUYER_DATA : null
+  if (!buyer) {
+    return (
+      <div className="px-4 pt-4 pb-24 flex flex-col items-center justify-center min-h-[400px] text-center">
+        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+          <User size={28} className="text-gray-400" />
+        </div>
+        <p className="font-bold text-gray-900 mb-2">Hubungkan AstraPay</p>
+        <p className="text-sm text-gray-500 mb-6 max-w-[240px]">Login dengan AstraPay untuk melihat profil dan loyalty card kamu.</p>
+        <button className="w-full bg-app-blue text-white font-bold py-4 rounded-2xl text-sm">
+          Hubungkan AstraPay
+        </button>
+      </div>
+    )
+  }
+  return (
+    <div className="px-4 pt-4 pb-24">
+      {/* Profile card */}
+      <div className="rounded-2xl overflow-hidden mb-4" style={{ background: 'linear-gradient(135deg, #0f1c40 0%, #1E3A8A 100%)' }}>
+        <div className="px-5 pt-5 pb-3 flex items-center gap-3">
+          <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-white font-extrabold text-lg flex-shrink-0">
+            {buyer.name.charAt(0)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-extrabold text-white text-base">{buyer.name}</p>
+            <p className="text-blue-300 text-xs">{buyer.phone}</p>
+          </div>
+          <div className="bg-white/15 rounded-lg px-2 py-1 flex items-center gap-1 flex-shrink-0">
+            <span className="text-[10px] text-blue-200 font-medium">AstraPay</span>
+            <span className="text-green-400 text-[10px] font-bold">✓</span>
+          </div>
+        </div>
+        <div className="mx-4 mb-4 bg-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="text-blue-300 text-[10px] mb-0.5">AstraPoints</p>
+            <p className="text-2xl font-extrabold text-white">{buyer.astraPoints}</p>
+            <p className="text-[10px] text-blue-300 mt-0.5">≈ {formatRp(buyer.astraPoints * 10)} saldo</p>
+          </div>
+          <Star size={32} className="text-astrapay-gold" fill="currentColor" />
+        </div>
+      </div>
+
+      {/* Loyalty cards */}
+      <p className="font-extrabold text-gray-900 text-sm mb-3">Loyalty Card</p>
+      <div className="space-y-3">
+        {buyer.loyaltyCards.map((card) => (
+          <LoyaltyStampCard key={card.store} {...card} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Bottom Nav ────────────────────────────────────────────────────────────────
+
+function BottomNav({ activeTab, cartCount, onTabChange, onCartOpen }: {
+  activeTab: ActiveTab
+  cartCount: number
+  onTabChange: (tab: ActiveTab) => void
+  onCartOpen: () => void
+}) {
+  const tabs = [
+    { id: 'beranda'  as ActiveTab, label: 'Beranda',   Icon: Home,        isCart: false },
+    { id: 'kategori' as ActiveTab, label: 'Kategori',  Icon: LayoutGrid,  isCart: false },
+    { id: 'cart'     as ActiveTab, label: 'Keranjang', Icon: ShoppingCart, isCart: true  },
+    { id: 'pesanan'  as ActiveTab, label: 'Pesanan',   Icon: Package,     isCart: false },
+    { id: 'akun'     as ActiveTab, label: 'Akun',      Icon: User,        isCart: false },
+  ]
+  return (
+    <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t border-gray-100 z-40 flex items-stretch shadow-[0_-4px_20px_rgba(0,0,0,0.06)]" style={{ height: '60px' }}>
+      {tabs.map(({ id, label, Icon: TabIcon, isCart }) => {
+        const isActive = !isCart && activeTab === id
+        return (
+          <button
+            key={id}
+            onClick={() => isCart ? onCartOpen() : onTabChange(id)}
+            className="flex flex-col items-center justify-center gap-0.5 flex-1 relative"
+          >
+            <div className="relative">
+              <TabIcon size={20} className={isActive ? 'text-app-blue' : isCart && cartCount > 0 ? 'text-gray-700' : 'text-gray-400'} />
+              {isCart && cartCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 rounded-full text-[9px] font-bold text-white flex items-center justify-center leading-none">
+                  {cartCount > 9 ? '9+' : cartCount}
+                </span>
+              )}
+            </div>
+            <span className={`text-[9px] font-semibold ${isActive ? 'text-app-blue' : 'text-gray-400'}`}>{label}</span>
+            {isActive && <div className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-app-blue rounded-full" />}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Seller Preview Banner ─────────────────────────────────────────────────────
 
 function SellerPreviewBanner({ slug }: { slug: string }) {
@@ -1270,6 +1500,7 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
   const [isCartSheetOpen,  setIsCartSheetOpen]  = useState(false)
   const [cartToastProduct, setCartToastProduct] = useState<Product | null>(null)
   const [cartToastVisible, setCartToastVisible] = useState(false)
+  const [activeTab,        setActiveTab]        = useState<ActiveTab>('beranda')
   const productsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -1371,7 +1602,6 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
     (categoryFilter === 'all' || p.category === categoryFilter) &&
     (p.name.toLowerCase().includes(search.toLowerCase()) || p.category.toLowerCase().includes(search.toLowerCase()))
   )
-  const cartTotal    = cart.reduce((s, item) => s + item.product.price * item.quantity, 0)
   const cartTotalQty = cart.reduce((s, item) => s + item.quantity, 0)
 
   return (
@@ -1436,146 +1666,150 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
         />
       </div>
 
-      {/* Hero Banner */}
-      {products.length > 0 && (
-        <HeroBanner
+      {/* ── Beranda tab ── */}
+      {activeTab === 'beranda' && (
+        <>
+          {products.length > 0 && (
+            <HeroBanner
+              products={products}
+              seller={seller}
+              onViewCatalog={() => productsRef.current?.scrollIntoView({ behavior: 'smooth' })}
+            />
+          )}
+
+          {categories.length > 2 && (
+            <div className="px-4 pt-3">
+              <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                {categories.map((cat) => (
+                  <button key={cat} onClick={() => setCategoryFilter(cat)}
+                    className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${categoryFilter === cat ? 'bg-app-blue text-white border-app-blue' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+                  >
+                    {cat === 'all' ? 'Semua' : cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div ref={productsRef} className="px-4 pt-4 pb-2 flex items-center justify-between">
+            <p className="font-extrabold text-gray-900 text-base">
+              {search ? 'Hasil Pencarian' : categoryFilter !== 'all' ? categoryFilter : 'Produk Terlaris'}
+            </p>
+            {!search && categoryFilter !== 'all' ? (
+              <button onClick={() => setCategoryFilter('all')} className="text-xs text-app-blue font-semibold flex items-center gap-1">
+                Lihat semua <ArrowRight size={12} />
+              </button>
+            ) : !search ? (
+              <span className="text-xs text-gray-400">{filtered.length} produk</span>
+            ) : null}
+          </div>
+
+          <div className="px-4 pb-24">
+            {filtered.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+                {search || categoryFilter !== 'all' ? (
+                  <>
+                    <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
+                      <span className="text-3xl">🔍</span>
+                    </div>
+                    <p className="font-semibold text-gray-700 mb-1">Produk tidak ditemukan</p>
+                    <p className="text-gray-400 text-sm mb-5">Coba kata kunci lain atau hapus filter.</p>
+                    <button onClick={() => { setSearch(''); setCategoryFilter('all') }}
+                      className="text-app-blue text-sm font-semibold border border-app-blue/30 px-4 py-2 rounded-xl hover:bg-app-blue-pale transition-colors"
+                    >
+                      Hapus filter
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
+                      <span className="text-3xl">📦</span>
+                    </div>
+                    <p className="font-semibold text-gray-700 mb-1">Toko sedang disiapkan</p>
+                    <p className="text-gray-400 text-sm">Produk akan muncul di sini setelah seller menambahkannya.</p>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {filtered.map((product, index) => {
+                  const { color, Icon } = getCategoryStyle(product.category)
+                  const isBestSeller = isDemoMode && index === 0
+                  const soldCount = [124, 89, 67, 52, 43, 38][index % 6]
+                  return (
+                    <div key={product.id}
+                      className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm animate-fadein cursor-pointer group"
+                      style={{ animationDelay: `${index * 50}ms` }}
+                      onClick={() => setPreviewProduct(product)}
+                    >
+                      <div className="relative flex items-center justify-center py-7 transition-opacity group-hover:opacity-90" style={{ backgroundColor: color }}>
+                        <Icon size={40} className="text-white transition-transform group-hover:scale-110 duration-200" />
+                        {isBestSeller && (
+                          <div className="absolute top-2 left-2 bg-astrapay-gold text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">🔥 TERLARIS</div>
+                        )}
+                        <button aria-label="Favorit" onClick={(e) => { e.stopPropagation(); toggleWishlist(product.id) }}
+                          className="absolute top-2 right-2 w-6 h-6 bg-white/20 rounded-full flex items-center justify-center"
+                        >
+                          <Star size={12} className={wishlist.has(product.id) ? 'text-yellow-300' : 'text-white'} fill={wishlist.has(product.id) ? 'currentColor' : 'none'} />
+                        </button>
+                      </div>
+                      <div className="p-3">
+                        <p className="text-sm font-semibold text-gray-900 leading-snug mb-0.5 line-clamp-2">{product.name}</p>
+                        <p className="text-[10px] text-gray-400 mb-1">{soldCount}x terjual</p>
+                        <p className="text-base font-extrabold text-app-blue tracking-tight mb-2.5">{formatRp(product.price)}</p>
+                        <button onClick={(e) => { e.stopPropagation(); addToCart(product) }}
+                          className="w-full bg-app-blue hover:bg-app-blue-light text-white text-xs font-bold py-2.5 rounded-xl transition-colors active:scale-[0.97] flex items-center justify-center gap-1"
+                        >
+                          <ShoppingCart size={11} /> + Keranjang
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {seller.whatsapp && (
+            <div className="px-4 pb-4">
+              <a href={`https://wa.me/${seller.whatsapp.replace(/^0/, '62').replace(/\s/g, '')}?text=${encodeURIComponent(`Halo, aku mau tanya soal produk di ${seller.name}`)}`}
+                target="_blank" rel="noopener noreferrer"
+                className="w-full bg-[#25D366] hover:bg-[#1fb85a] text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm"
+              >
+                <MessageCircle size={16} /> Chat Penjual via WhatsApp
+              </a>
+            </div>
+          )}
+
+          <div className="px-4 py-6 text-center pb-24">
+            <p className="text-xs text-gray-400">Toko ini dikelola dengan <Link href="/" className="text-app-blue font-medium">AstraToko</Link> · Powered by AstraPay</p>
+          </div>
+        </>
+      )}
+
+      {/* ── Kategori tab ── */}
+      {activeTab === 'kategori' && (
+        <KategoriPanel
+          categories={categories.filter((c) => c !== 'all')}
+          categoryFilter={categoryFilter}
           products={products}
-          seller={seller}
-          onViewCatalog={() => productsRef.current?.scrollIntoView({ behavior: 'smooth' })}
+          onSelect={(cat) => { setCategoryFilter(cat); setActiveTab('beranda') }}
         />
       )}
 
-      {/* Category filter */}
-      {categories.length > 2 && (
-        <div className="px-4 pt-3">
-          <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-            {categories.map((cat) => (
-              <button key={cat} onClick={() => setCategoryFilter(cat)}
-                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${categoryFilter === cat ? 'bg-app-blue text-white border-app-blue' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
-              >
-                {cat === 'all' ? 'Semua' : cat}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* ── Pesanan tab ── */}
+      {activeTab === 'pesanan' && <PesananPanel isDemoMode={isDemoMode} />}
 
-      {/* Section header */}
-      <div ref={productsRef} className="px-4 pt-4 pb-2 flex items-center justify-between">
-        <p className="font-extrabold text-gray-900 text-base">
-          {search ? 'Hasil Pencarian' : categoryFilter !== 'all' ? categoryFilter : 'Produk Terlaris'}
-        </p>
-        {!search && categoryFilter !== 'all' ? (
-          <button onClick={() => setCategoryFilter('all')} className="text-xs text-app-blue font-semibold flex items-center gap-1">
-            Lihat semua <ArrowRight size={12} />
-          </button>
-        ) : !search ? (
-          <span className="text-xs text-gray-400">{filtered.length} produk</span>
-        ) : null}
-      </div>
+      {/* ── Akun tab ── */}
+      {activeTab === 'akun' && <AkunPanel isDemoMode={isDemoMode} />}
 
-      {/* Product grid */}
-      <div className="px-4 pb-28">
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center px-4">
-            {search || categoryFilter !== 'all' ? (
-              <>
-                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
-                  <span className="text-3xl">🔍</span>
-                </div>
-                <p className="font-semibold text-gray-700 mb-1">Produk tidak ditemukan</p>
-                <p className="text-gray-400 text-sm mb-5">Coba kata kunci lain atau hapus filter.</p>
-                <button onClick={() => { setSearch(''); setCategoryFilter('all') }}
-                  className="text-app-blue text-sm font-semibold border border-app-blue/30 px-4 py-2 rounded-xl hover:bg-app-blue-pale transition-colors"
-                >
-                  Hapus filter
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
-                  <span className="text-3xl">📦</span>
-                </div>
-                <p className="font-semibold text-gray-700 mb-1">Toko sedang disiapkan</p>
-                <p className="text-gray-400 text-sm">Produk akan muncul di sini setelah seller menambahkannya.</p>
-              </>
-            )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {filtered.map((product, index) => {
-              const { color, Icon } = getCategoryStyle(product.category)
-              const isBestSeller = isDemoMode && index === 0
-              const soldCount = [124, 89, 67, 52, 43, 38][index % 6]
-              return (
-                <div key={product.id}
-                  className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm animate-fadein cursor-pointer group"
-                  style={{ animationDelay: `${index * 50}ms` }}
-                  onClick={() => setPreviewProduct(product)}
-                >
-                  <div className="relative flex items-center justify-center py-7 transition-opacity group-hover:opacity-90" style={{ backgroundColor: color }}>
-                    <Icon size={40} className="text-white transition-transform group-hover:scale-110 duration-200" />
-                    {isBestSeller && (
-                      <div className="absolute top-2 left-2 bg-astrapay-gold text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">🔥 TERLARIS</div>
-                    )}
-                    <button aria-label="Favorit" onClick={(e) => { e.stopPropagation(); toggleWishlist(product.id) }}
-                      className="absolute top-2 right-2 w-6 h-6 bg-white/20 rounded-full flex items-center justify-center"
-                    >
-                      <Star size={12} className={wishlist.has(product.id) ? 'text-yellow-300' : 'text-white'} fill={wishlist.has(product.id) ? 'currentColor' : 'none'} />
-                    </button>
-                  </div>
-                  <div className="p-3">
-                    <p className="text-sm font-semibold text-gray-900 leading-snug mb-0.5 line-clamp-2">{product.name}</p>
-                    <p className="text-[10px] text-gray-400 mb-1">{soldCount}x terjual</p>
-                    <p className="text-base font-extrabold text-app-blue tracking-tight mb-2.5">{formatRp(product.price)}</p>
-                    <button onClick={(e) => { e.stopPropagation(); addToCart(product) }}
-                      className="w-full bg-app-blue hover:bg-app-blue-light text-white text-xs font-bold py-2.5 rounded-xl transition-colors active:scale-[0.97] flex items-center justify-center gap-1"
-                    >
-                      <ShoppingCart size={11} /> + Keranjang
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {seller.whatsapp && (
-        <div className="px-4 pb-4">
-          <a href={`https://wa.me/${seller.whatsapp.replace(/^0/, '62').replace(/\s/g, '')}?text=${encodeURIComponent(`Halo, aku mau tanya soal produk di ${seller.name}`)}`}
-            target="_blank" rel="noopener noreferrer"
-            className="w-full bg-[#25D366] hover:bg-[#1fb85a] text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm"
-          >
-            <MessageCircle size={16} /> Chat Penjual via WhatsApp
-          </a>
-        </div>
-      )}
-
-      <div className="px-4 py-6 text-center">
-        <p className="text-xs text-gray-400">Toko ini dikelola dengan <Link href="/" className="text-app-blue font-medium">AstraToko</Link> · Powered by AstraPay</p>
-      </div>
-
-      {/* Floating cart bar */}
-      {cart.length > 0 && !isCheckoutOpen && !isCartSheetOpen && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] max-w-md">
-          <button onClick={() => setIsCartSheetOpen(true)}
-            className="w-full bg-gray-900 hover:bg-gray-800 text-white font-bold py-4 rounded-2xl flex items-center justify-between px-5 shadow-2xl transition-colors animate-slide-down"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="relative">
-                <ShoppingCart size={18} />
-                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-app-blue rounded-full text-[9px] font-bold flex items-center justify-center">{cartTotalQty}</span>
-              </div>
-              <span className="text-sm">{cartTotalQty} produk</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold">{formatRp(cartTotal)}</span>
-              <ArrowRight size={16} />
-            </div>
-          </button>
-        </div>
-      )}
+      {/* Bottom nav */}
+      <BottomNav
+        activeTab={activeTab}
+        cartCount={cartTotalQty}
+        onTabChange={setActiveTab}
+        onCartOpen={() => setIsCartSheetOpen(true)}
+      />
 
       {/* Product detail sheet */}
       {previewProduct && seller && (
