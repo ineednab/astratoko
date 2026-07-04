@@ -490,7 +490,6 @@ function CheckoutModal({
         merchantTransactionId: txId,
         amount: total,
         description,
-        merchantUserId: buyerPhone || 'guest',
       }),
     })
       .then(r => r.json())
@@ -517,12 +516,12 @@ function CheckoutModal({
         // Poll for payment status every 3 seconds
         pollRef.current = setInterval(async () => {
           try {
-            const res = await fetch(`/api/astrapay/status?id=${txId}`)
+            const res = await fetch(`/api/astrapay/status?id=${txId}&amount=${total}`)
             const { status } = await res.json()
-            if (status === 'APP') {
+            if (status === '00') {
               if (pollRef.current) clearInterval(pollRef.current)
               handleConfirm()
-            } else if (status === 'REJ' || status === 'TIM') {
+            } else if (status === '05' || status === '06') {
               if (pollRef.current) clearInterval(pollRef.current)
               setStep('payment_failed')
             }
