@@ -351,6 +351,68 @@ function MerchantDashboard({ cart, buyerName, shippingName }: { cart: CartItem[]
   )
 }
 
+// ── Hero Banner ───────────────────────────────────────────────────────────────
+
+const BANNER_TAGLINES: Record<string, string> = {
+  Rem:        'Rem & kampas motor\noriginal terpercaya',
+  Oli:        'Oli & pelumas motor\nkualitas premium',
+  Helm:       'Helm SNI tersertifikasi\nuntuk keselamatanmu',
+  Filter:     'Filter udara & oli\nmotor berkualitas',
+  Mesin:      'Spare part mesin\ntahan lama & terjamin',
+  Transmisi:  'Rantai & transmisi\nmotor awet & panjang',
+  Aksesoris:  'Aksesoris motor\nlengkap & terjangkau',
+  Ban:        'Ban motor berkualitas\nharga terjangkau',
+  Elektrik:   'Komponen elektrik\nmotor pilihan terbaik',
+}
+
+function HeroBanner({
+  products,
+  seller,
+  onViewCatalog,
+}: {
+  products: Product[]
+  seller: Seller
+  onViewCatalog: () => void
+}) {
+  const categoryCount = products.reduce<Record<string, number>>((acc, p) => {
+    acc[p.category] = (acc[p.category] ?? 0) + 1
+    return acc
+  }, {})
+  const topCategory = Object.entries(categoryCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
+  const { color, Icon } = getCategoryStyle(topCategory)
+  const tagline = BANNER_TAGLINES[topCategory] ?? `Produk terpercaya\ndari ${seller.name}`
+
+  return (
+    <div
+      className="mx-4 mt-3 rounded-2xl overflow-hidden"
+      style={{ background: 'linear-gradient(135deg, #0f1c40 0%, #1E3A8A 100%)' }}
+    >
+      <div className="flex min-h-[128px]">
+        <div className="flex-1 px-5 py-5 flex flex-col justify-between min-w-0">
+          <div>
+            <p className="text-white font-extrabold text-[17px] leading-snug whitespace-pre-line">{tagline}</p>
+            <p className="text-blue-300 text-[11px] mt-1.5">{seller.location} · {products.length} produk</p>
+          </div>
+          <button
+            onClick={onViewCatalog}
+            className="mt-3 bg-white text-[#1E3A8A] text-xs font-extrabold px-4 py-2 rounded-xl w-fit hover:bg-blue-50 transition-colors"
+          >
+            Lihat Katalog
+          </button>
+        </div>
+        <div
+          className="w-28 flex-shrink-0 relative overflow-hidden"
+          style={{ background: `linear-gradient(135deg, transparent 30%, ${color}55 100%)` }}
+        >
+          <div className="absolute -right-3 top-1/2 -translate-y-1/2 opacity-20">
+            <Icon size={104} className="text-white" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Checkout constants ────────────────────────────────────────────────────────
 
 const CITIES = ['Jakarta', 'Bandung', 'Bogor', 'Bekasi', 'Depok', 'Tangerang', 'Surabaya', 'Yogyakarta', 'Semarang', 'Medan', 'Makassar', 'Palembang']
@@ -1208,6 +1270,7 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
   const [isCartSheetOpen,  setIsCartSheetOpen]  = useState(false)
   const [cartToastProduct, setCartToastProduct] = useState<Product | null>(null)
   const [cartToastVisible, setCartToastVisible] = useState(false)
+  const productsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search)
@@ -1373,6 +1436,15 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
         />
       </div>
 
+      {/* Hero Banner */}
+      {products.length > 0 && (
+        <HeroBanner
+          products={products}
+          seller={seller}
+          onViewCatalog={() => productsRef.current?.scrollIntoView({ behavior: 'smooth' })}
+        />
+      )}
+
       {/* Category filter */}
       {categories.length > 2 && (
         <div className="px-4 pt-3">
@@ -1388,8 +1460,22 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
         </div>
       )}
 
+      {/* Section header */}
+      <div ref={productsRef} className="px-4 pt-4 pb-2 flex items-center justify-between">
+        <p className="font-extrabold text-gray-900 text-base">
+          {search ? 'Hasil Pencarian' : categoryFilter !== 'all' ? categoryFilter : 'Produk Terlaris'}
+        </p>
+        {!search && categoryFilter !== 'all' ? (
+          <button onClick={() => setCategoryFilter('all')} className="text-xs text-app-blue font-semibold flex items-center gap-1">
+            Lihat semua <ArrowRight size={12} />
+          </button>
+        ) : !search ? (
+          <span className="text-xs text-gray-400">{filtered.length} produk</span>
+        ) : null}
+      </div>
+
       {/* Product grid */}
-      <div className="px-4 py-4 pb-28">
+      <div className="px-4 pb-28">
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center px-4">
             {search || categoryFilter !== 'all' ? (
