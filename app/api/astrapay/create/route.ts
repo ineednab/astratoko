@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     })
 
     if (result.error) {
-      console.error('[AstraPay] createPayment error:', result.raw)
+      console.error('[AstraPay] createPayment error:', result.raw ?? result.error)
       return NextResponse.json({ error: result.error, raw: result.raw }, { status: 502 })
     }
 
