@@ -1,169 +1,1166 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import Link from 'next/link'
-import {
-  ArrowLeft,
-  Share2,
-  Star,
-  X,
-  ShoppingBag,
-  CheckCircle,
-  Wrench,
-  Droplets,
-  Shield,
-  Package,
-  Settings,
-  Zap,
-  Circle,
-  Wind,
-  Gem,
-  type LucideIcon,
-} from 'lucide-react'
-import { SELLER, PRODUCTS } from '@/lib/mock-data'
+import { ArrowLeft, ArrowRight, Share2, Star, X, ShoppingBag, CheckCircle, MessageCircle, TrendingUp, Bell, MapPin, Truck, ShoppingCart, ChevronDown } from 'lucide-react'
+import { formatRp } from '@/lib/utils'
+import { getCategoryStyle } from '@/lib/categories'
+import Confetti from '@/components/Confetti'
+import type { Seller, Product } from '@/lib/types'
 
-type Product = (typeof PRODUCTS)[0]
-type CheckoutStep = 'confirm' | 'qris' | 'success'
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-const CATEGORY_STYLE: Record<string, { color: string; Icon: LucideIcon }> = {
-  Rem:       { color: '#3B5BDB', Icon: Wrench },
-  Oli:       { color: '#2F9E44', Icon: Droplets },
-  Helm:      { color: '#F08C00', Icon: Shield },
-  Filter:    { color: '#7048E8', Icon: Wind },
-  Mesin:     { color: '#0C8599', Icon: Settings },
-  Transmisi: { color: '#C92A2A', Icon: Circle },
-  Aksesoris: { color: '#D6336C', Icon: Gem },
-  Elektrik:  { color: '#E67700', Icon: Zap },
-  Ban:       { color: '#495057', Icon: Circle },
+type CheckoutStep  = 'cart_review' | 'shipping' | 'buyer_info' | 'payment_method' | 'qris' | 'success' | 'merchant_reveal' | 'payment_failed'
+type DemoProgress  = 'browse' | 'select' | 'checkout' | 'success'
+type PaymentMethod = 'astrapay' | 'transfer' | 'cod'
+type QrisStatus    = 'waiting' | 'detected' | 'verifying' | 'verified'
+type MerchantPhase = 'intro' | 'dashboard'
+type CartItem      = { product: Product; quantity: number }
+
+const DEMO_STEPS: { id: DemoProgress; label: string }[] = [
+  { id: 'browse',   label: 'Browse'   },
+  { id: 'select',   label: 'Keranjang' },
+  { id: 'checkout', label: 'Checkout' },
+  { id: 'success',  label: 'Selesai'  },
+]
+
+const SHIPPING_OPTIONS = [
+  { id: 'pickup',  name: 'Ambil di Toko', price: 0,     duration: 'Hari ini',  icon: '🏪' },
+  { id: 'jne',     name: 'JNE Reguler',   price: 15000, duration: '2–3 hari',  icon: '📦' },
+  { id: 'jnt',     name: 'J&T Express',   price: 18000, duration: '1–2 hari',  icon: '⚡' },
+  { id: 'sicepat', name: 'SiCepat BEST',  price: 20000, duration: '1–2 hari',  icon: '🚀' },
+]
+
+// ── Count-up hook ─────────────────────────────────────────────────────────────
+
+function useCountUp(target: number, duration = 900) {
+  const [value, setValue] = useState(0)
+  useEffect(() => {
+    const start = performance.now()
+    const tick = (now: number) => {
+      const t    = Math.min((now - start) / duration, 1)
+      const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+      setValue(Math.round(ease * target))
+      if (t < 1) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  }, [target, duration])
+  return value
 }
 
-function getCategoryStyle(category: string) {
-  return CATEGORY_STYLE[category] ?? { color: '#3B5BDB', Icon: Package }
-}
+// ── Skeleton ──────────────────────────────────────────────────────────────────
 
-function formatRp(n: number) {
-  return 'Rp ' + n.toLocaleString('id-ID')
-}
-
-function CheckoutModal({ product, onClose }: { product: Product; onClose: () => void }) {
-  const [step, setStep] = useState<CheckoutStep>('confirm')
-  const style = getCategoryStyle(product.category)
-  const Icon = style.Icon
-
+function ProductSkeleton() {
   return (
-    <div
-      className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center"
-      onClick={onClose}
-    >
-      <div className="bg-white w-full max-w-md rounded-t-3xl pb-8" onClick={(e) => e.stopPropagation()}>
-        {/* Handle */}
+    <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+      <div className="h-24 bg-gray-100 animate-pulse" />
+      <div className="p-3 space-y-2">
+        <div className="h-4 bg-gray-100 rounded animate-pulse" />
+        <div className="h-5 w-20 bg-gray-100 rounded animate-pulse" />
+        <div className="h-9 bg-gray-100 rounded-xl animate-pulse" />
+      </div>
+    </div>
+  )
+}
+
+// ── Demo Floating Pill ────────────────────────────────────────────────────────
+
+function DemoFloatingPill({ progress }: { progress: DemoProgress }) {
+  const label = DEMO_STEPS.find((s) => s.id === progress)?.label ?? ''
+  return (
+    <div className="fixed top-4 right-4 z-[60] pointer-events-none">
+      <div className="bg-gray-900/90 backdrop-blur-sm text-white rounded-full px-3 py-1.5 flex items-center gap-2 shadow-xl text-xs font-medium whitespace-nowrap">
+        <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse flex-shrink-0" />
+        <span className="text-gray-400">Demo</span>
+        <span className="text-gray-500">·</span>
+        <span>{label}</span>
+      </div>
+    </div>
+  )
+}
+
+// ── Demo Welcome Toast ────────────────────────────────────────────────────────
+
+function DemoWelcomeToast({ visible }: { visible: boolean }) {
+  return (
+    <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-[320px] bg-white rounded-2xl shadow-2xl px-5 py-4 border border-gray-100 transition-all duration-500 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}>
+      <div className="flex items-start gap-3">
+        <div className="text-2xl flex-shrink-0">👋</div>
+        <div>
+          <p className="font-bold text-gray-900 text-sm">Selamat datang di Toko Rizky!</p>
+          <p className="text-xs text-gray-400 mt-0.5">Tambahkan beberapa produk ke keranjang, lalu checkout semuanya.</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Cart Added Toast ──────────────────────────────────────────────────────────
+
+function CartToast({ product, visible }: { product: Product | null; visible: boolean }) {
+  const { color, Icon } = product ? getCategoryStyle(product.category) : { color: '#3B5BDB', Icon: ShoppingBag }
+  return (
+    <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-[320px] bg-white rounded-2xl shadow-2xl border border-gray-100 transition-all duration-400 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}>
+      <div className="flex items-center gap-3 px-4 py-3.5">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: color }}>
+          <Icon size={14} className="text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-gray-900 text-sm truncate">{product?.name}</p>
+          <p className="text-xs text-green-600 font-medium">✓ Ditambahkan ke keranjang</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Product Detail Sheet ──────────────────────────────────────────────────────
+
+function ProductDetailSheet({
+  product,
+  isDemoMode,
+  onClose,
+  onAddToCart,
+  onBuyNow,
+}: {
+  product: Product
+  isDemoMode: boolean
+  onClose: () => void
+  onAddToCart: (p: Product) => void
+  onBuyNow: (p: Product) => void
+}) {
+  const { color, Icon } = getCategoryStyle(product.category)
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center" onClick={onClose}>
+      <div className="bg-white w-full max-w-md rounded-t-3xl pb-8 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 bg-gray-200 rounded-full" />
         </div>
+        <div className="px-5 pb-2 pt-2">
+          <div className="flex items-center justify-between mb-4">
+            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500">
+              <X size={18} />
+            </button>
+            <h3 className="font-extrabold text-gray-900 text-base">Detail Produk</h3>
+            <div className="w-8" />
+          </div>
 
-        {step === 'confirm' && (
+          {/* Product hero */}
+          <div className="relative rounded-2xl overflow-hidden mb-4" style={{ backgroundColor: color }}>
+            <div className="flex items-center justify-center py-12">
+              <Icon size={56} className="text-white" />
+            </div>
+            {isDemoMode && (
+              <div className="absolute top-3 left-3 bg-astrapay-gold text-white text-[9px] font-extrabold px-2 py-1 rounded-full">
+                🔥 TERLARIS
+              </div>
+            )}
+          </div>
+
+          <h2 className="font-extrabold text-gray-900 text-xl mb-1">{product.name}</h2>
+          <p className="text-xs text-gray-400 mb-3">{product.category}</p>
+
+          <div className="flex items-center gap-3 mb-3">
+            <span className="flex items-center gap-1 text-xs text-gray-500">
+              <Star size={11} className="text-yellow-400" fill="currentColor" />
+              <strong className="text-gray-900">4.9</strong> (248 ulasan)
+            </span>
+            <span className="text-gray-200">·</span>
+            <span className="text-xs text-gray-500">🔥 <strong className="text-gray-900">124</strong> terjual</span>
+            {isDemoMode && <span className="text-xs text-green-600 font-medium animate-pulse">· 2 orang melihat ini</span>}
+          </div>
+
+          <div className="flex items-end justify-between mb-4">
+            <p className="text-3xl font-extrabold text-app-blue tracking-tight">{formatRp(product.price)}</p>
+            <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded-lg">Stok: 14 unit</span>
+          </div>
+
+          <div className="bg-amber-50 border border-amber-100 rounded-xl px-3.5 py-2.5 flex items-center gap-2.5 mb-5">
+            <Star size={16} className="text-astrapay-gold flex-shrink-0" fill="currentColor" />
+            <p className="text-xs text-amber-800">
+              Beli ini = <strong>+50 AstraPoints</strong> yang bisa ditukar jadi saldo AstraPay
+            </p>
+          </div>
+
+          {/* Two CTAs */}
+          <button
+            onClick={() => { onAddToCart(product); onClose() }}
+            className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-base mb-2.5"
+          >
+            <ShoppingCart size={18} /> Tambah ke Keranjang
+          </button>
+          <button
+            onClick={() => { onBuyNow(product); onClose() }}
+            className="w-full border-2 border-app-blue text-app-blue font-semibold py-3.5 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm hover:bg-app-blue-pale"
+          >
+            Beli Langsung <ArrowRight size={15} />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Cart Sheet ────────────────────────────────────────────────────────────────
+
+function CartSheet({
+  cart,
+  onClose,
+  onRemove,
+  onUpdateQty,
+  onCheckout,
+}: {
+  cart: CartItem[]
+  onClose: () => void
+  onRemove: (productId: string) => void
+  onUpdateQty: (productId: string, qty: number) => void
+  onCheckout: () => void
+}) {
+  const totalQty = cart.reduce((s, item) => s + item.quantity, 0)
+  const subtotal = cart.reduce((s, item) => s + item.product.price * item.quantity, 0)
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center" onClick={onClose}>
+      <div className="bg-white w-full max-w-md rounded-t-3xl pb-8 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-center pt-3 pb-1"><div className="w-10 h-1 bg-gray-200 rounded-full" /></div>
+        <div className="px-5 pt-3">
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="font-extrabold text-gray-900 text-lg">Keranjang ({totalQty})</h3>
+            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500">
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="space-y-2.5 mb-5">
+            {cart.map((item) => {
+              const { color, Icon } = getCategoryStyle(item.product.category)
+              return (
+                <div key={item.product.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: color }}>
+                    <Icon size={16} className="text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm truncate">{item.product.name}</p>
+                    <p className="text-app-blue font-bold text-sm">{formatRp(item.product.price * item.quantity)}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <button
+                      onClick={() => item.quantity === 1 ? onRemove(item.product.id) : onUpdateQty(item.product.id, item.quantity - 1)}
+                      className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors text-base leading-none font-bold"
+                    >
+                      −
+                    </button>
+                    <span className="text-sm font-bold text-gray-900 w-5 text-center">{item.quantity}</span>
+                    <button
+                      onClick={() => onUpdateQty(item.product.id, item.quantity + 1)}
+                      className="w-6 h-6 flex items-center justify-center rounded-full bg-app-blue text-white hover:bg-app-blue-light transition-colors text-base leading-none font-bold"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Subtotal */}
+          <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center justify-between mb-5">
+            <span className="text-sm text-gray-600">Subtotal ({totalQty} item)</span>
+            <span className="font-extrabold text-gray-900">{formatRp(subtotal)}</span>
+          </div>
+
+          <button
+            onClick={onCheckout}
+            className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-base"
+          >
+            <ShoppingCart size={18} /> Checkout Semuanya
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Merchant Dashboard Reveal ─────────────────────────────────────────────────
+
+function MerchantDashboard({ cart, buyerName, shippingName }: { cart: CartItem[]; buyerName: string; shippingName: string }) {
+  const total    = cart.reduce((s, item) => s + item.product.price * item.quantity, 0)
+  const totalQty = cart.reduce((s, item) => s + item.quantity, 0)
+  const revenue  = useCountUp(total, 1200)
+  const orders   = useCountUp(totalQty, 800)
+  const primary  = cart[0].product
+
+  const notifDetail = cart.length > 1
+    ? `${primary.name} +${cart.length - 1} lainnya`
+    : cart[0].quantity > 1
+    ? `${primary.name} ×${cart[0].quantity}`
+    : primary.name
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2.5 bg-green-500/10 border border-green-500/20 rounded-2xl px-4 py-3 animate-notification">
+        <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+          <Bell size={14} className="text-white" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-green-300 leading-snug">
+            {totalQty > 1 ? `${totalQty} produk terjual!` : 'Order baru masuk!'}
+          </p>
+          <p className="text-[10px] text-green-500 truncate">
+            {notifDetail} · {buyerName || 'Pembeli'}
+          </p>
+        </div>
+        <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse flex-shrink-0 ml-auto" />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="bg-white/5 border border-white/10 rounded-2xl px-3.5 py-3.5 animate-fadein" style={{ animationDelay: '0.15s' }}>
+          <p className="text-[9px] text-gray-500 font-medium mb-1 uppercase tracking-wide">Pendapatan</p>
+          <p className="text-sm font-extrabold text-white tracking-tight">{formatRp(revenue)}</p>
+          <p className="text-[9px] text-green-400 mt-1 flex items-center gap-1"><TrendingUp size={8} /> real-time</p>
+        </div>
+        <div className="bg-white/5 border border-white/10 rounded-2xl px-3.5 py-3.5 animate-fadein" style={{ animationDelay: '0.2s' }}>
+          <p className="text-[9px] text-gray-500 font-medium mb-1 uppercase tracking-wide">Produk Terjual</p>
+          <p className="text-3xl font-extrabold text-white">{orders}</p>
+          <p className="text-[9px] text-green-400 mt-1">↑ hari ini</p>
+        </div>
+      </div>
+
+      <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 animate-fadein" style={{ animationDelay: '0.3s' }}>
+        <div className="flex items-center justify-between mb-2.5">
+          <p className="text-[10px] font-bold text-gray-300 uppercase tracking-wide">Ringkasan Order</p>
+          <span className="text-[9px] bg-green-500/20 text-green-400 font-bold px-2 py-0.5 rounded-full">LUNAS</span>
+        </div>
+        {[
+          { label: 'Pembeli',    value: buyerName || 'Pembeli',           style: 'text-gray-300' },
+          { label: 'Produk',     value: `${totalQty} item`,               style: 'text-gray-300' },
+          { label: 'Pengiriman', value: shippingName,             style: 'text-gray-300' },
+          { label: 'Pembayaran', value: 'AstraPay ✓',             style: 'text-green-400 font-semibold' },
+          { label: 'Total',      value: formatRp(total),          style: 'text-white font-bold' },
+        ].map((row) => (
+          <div key={row.label} className="flex items-center justify-between py-0.5">
+            <span className="text-[10px] text-gray-500">{row.label}</span>
+            <span className={`text-[10px] text-right ${row.style}`}>{row.value}</span>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-xs text-gray-500 leading-relaxed animate-fadein" style={{ animationDelay: '0.45s' }}>
+        Setiap transaksi langsung masuk ke dashboardmu — tanpa bergantung sepenuhnya pada marketplace.
+      </p>
+    </div>
+  )
+}
+
+// ── Checkout constants ────────────────────────────────────────────────────────
+
+const CITIES = ['Jakarta', 'Bandung', 'Bogor', 'Bekasi', 'Depok', 'Tangerang', 'Surabaya', 'Yogyakarta', 'Semarang', 'Medan', 'Makassar', 'Palembang']
+
+const CHECKOUT_STEP_LABELS = ['Keranjang', 'Pengiriman', 'Data', 'Pembayaran', 'Selesai']
+const CHECKOUT_STEP_INDEX: Record<CheckoutStep, number> = {
+  cart_review: 0, shipping: 1, buyer_info: 2, payment_method: 3,
+  qris: 4, success: 4, merchant_reveal: 4, payment_failed: 3,
+}
+
+// ── Checkout Modal ────────────────────────────────────────────────────────────
+
+function CheckoutModal({
+  cart,
+  seller,
+  onClose,
+  onRemove,
+  onUpdateQty,
+  isDemoMode,
+  onDemoProgress,
+}: {
+  cart: CartItem[]
+  seller: Seller
+  onClose: () => void
+  onRemove: (productId: string) => void
+  onUpdateQty: (productId: string, qty: number) => void
+  isDemoMode?: boolean
+  onDemoProgress?: (p: DemoProgress) => void
+}) {
+  const DEMO_BUYERS = ['Justin Bieber', 'Dua Lipa', 'Sabrina Carpenter', 'Taylor Swift', 'Ariana Grande', 'Billie Eilish']
+
+  const [step,             setStep]             = useState<CheckoutStep>('cart_review')
+  const [buyerName,        setBuyerName]        = useState(() => isDemoMode ? DEMO_BUYERS[Math.floor(Math.random() * DEMO_BUYERS.length)] : '')
+  const [buyerPhone,       setBuyerPhone]       = useState('')
+  const [buyerAddress,     setBuyerAddress]     = useState('')
+  const [kota,             setKota]             = useState('')
+  const [kodePos,          setKodePos]          = useState('')
+  const [formErrors,       setFormErrors]       = useState<Record<string, string>>({})
+  const [selectedShipping, setSelectedShipping] = useState('pickup')
+  const [selectedPayment,  setSelectedPayment]  = useState<PaymentMethod>('astrapay')
+  const [orderId,          setOrderId]          = useState<string | null>(null)
+  const [confirming,       setConfirming]       = useState(false)
+  const [qrisStatus,       setQrisStatus]       = useState<QrisStatus>('waiting')
+  const [merchantPhase,    setMerchantPhase]    = useState<MerchantPhase>('intro')
+  const [summaryOpen,      setSummaryOpen]      = useState(false)
+  const [astraPayUrl,      setAstraPayUrl]      = useState<string | null>(null)
+  const [astraPayTxId,     setAstraPayTxId]     = useState<string | null>(null)
+  const [astraPayError,    setAstraPayError]    = useState<string | null>(null)
+  const confirmingRef = useRef(false)
+  const pollRef       = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const isDemo         = process.env.NEXT_PUBLIC_PAYMENT_PROVIDER === 'demo'
+  const shipping       = SHIPPING_OPTIONS.find((s) => s.id === selectedShipping) ?? SHIPPING_OPTIONS[0]
+  const subtotal       = cart.reduce((s, item) => s + item.product.price * item.quantity, 0)
+  const totalQty       = cart.reduce((s, item) => s + item.quantity, 0)
+  const total          = subtotal + shipping.price
+  const isDark         = step === 'merchant_reveal'
+  const primary        = cart[0].product
+  const currentStepIdx = CHECKOUT_STEP_INDEX[step]
+
+  function validateBuyerInfo() {
+    const errs: Record<string, string> = {}
+    if (!buyerName.trim()) errs.nama = 'Nama wajib diisi'
+    const cleanPhone = buyerPhone.replace(/[\s\-]/g, '')
+    if (!cleanPhone) errs.wa = 'Nomor WhatsApp wajib diisi'
+    else if (!/^\d{10,}$/.test(cleanPhone)) errs.wa = 'Minimal 10 digit, hanya angka'
+    if (selectedShipping !== 'pickup') {
+      if (!buyerAddress.trim()) errs.alamat = 'Alamat wajib diisi'
+      if (!kota) errs.kota = 'Kota wajib dipilih'
+      if (!kodePos) errs.kodePos = 'Kode pos wajib diisi'
+      else if (!/^\d{5}$/.test(kodePos)) errs.kodePos = 'Kode pos harus 5 digit angka'
+    }
+    setFormErrors(errs)
+    return Object.keys(errs).length === 0
+  }
+
+  async function handleConfirm() {
+    if (confirmingRef.current) return
+    confirmingRef.current = true
+    setConfirming(true)
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          seller_id:    seller.id,
+          product_id:   primary.id,
+          product_name: cart.length > 1 ? `${primary.name} +${cart.length - 1} lainnya` : cart[0].quantity > 1 ? `${primary.name} ×${cart[0].quantity}` : primary.name,
+          price:        subtotal,
+          category:     primary.category,
+          buyer_name:   buyerName,
+          buyer_phone:  buyerPhone,
+        }),
+      })
+      const json = await res.json()
+      setOrderId(json.order?.id ?? null)
+      setStep('success')
+      onDemoProgress?.('success')
+    } catch {
+      confirmingRef.current = false
+      setConfirming(false)
+      setStep('payment_failed')
+    }
+  }
+
+  // Cinematic QRIS — ~8 seconds total (demo mode only)
+  useEffect(() => {
+    if (!isDemo || step !== 'qris') return
+    const t1 = setTimeout(() => setQrisStatus('detected'),  3000)
+    const t2 = setTimeout(() => setQrisStatus('verifying'), 5000)
+    const t3 = setTimeout(() => setQrisStatus('verified'),  7000)
+    const t4 = setTimeout(() => handleConfirm(),            8500)
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, isDemo])
+
+  // Real AstraPay payment — create payment + poll for status
+  useEffect(() => {
+    if (isDemo || step !== 'qris' || selectedPayment !== 'astrapay') return
+    if (astraPayTxId) return // already initiated
+
+    const txId = `AT-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`
+    setAstraPayTxId(txId)
+    setAstraPayError(null)
+
+    const primaryProduct = cart[0].product
+    const description = cart.length > 1
+      ? `${primaryProduct.name} +${cart.length - 1} lainnya`
+      : cart.length === 1 && cart[0].quantity > 1
+        ? `${primaryProduct.name} ×${cart[0].quantity}`
+        : primaryProduct.name
+
+    fetch('/api/astrapay/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        merchantTransactionId: txId,
+        amount: total,
+        description,
+        merchantUserId: buyerPhone || 'guest',
+      }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.error || !data.urlRedirect) {
+          // If in demo mode and AstraPay unavailable, fall back to cinematic QRIS
+          if (isDemoMode) {
+            setAstraPayTxId(null)
+            setQrisStatus('waiting')
+            const t1 = setTimeout(() => setQrisStatus('detected'),  3000)
+            const t2 = setTimeout(() => setQrisStatus('verifying'), 5000)
+            const t3 = setTimeout(() => setQrisStatus('verified'),  7000)
+            const t4 = setTimeout(() => handleConfirm(),            8500)
+            pollRef.current = t4 as unknown as ReturnType<typeof setInterval>
+            setTimeout(() => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }, 9000)
+            return
+          }
+          setAstraPayError(data.error ?? 'Gagal membuat pembayaran')
+          return
+        }
+        setAstraPayUrl(data.urlRedirect)
+        window.open(data.urlRedirect, '_blank', 'noopener,noreferrer')
+
+        // Poll for payment status every 3 seconds
+        pollRef.current = setInterval(async () => {
+          try {
+            const res = await fetch(`/api/astrapay/status?id=${txId}`)
+            const { status } = await res.json()
+            if (status === 'APP') {
+              if (pollRef.current) clearInterval(pollRef.current)
+              handleConfirm()
+            } else if (status === 'REJ' || status === 'TIM') {
+              if (pollRef.current) clearInterval(pollRef.current)
+              setStep('payment_failed')
+            }
+          } catch { /* keep polling */ }
+        }, 3000)
+      })
+      .catch(() => {
+        // Network error — fall back to cinematic QRIS in demo mode
+        if (isDemoMode) {
+          setAstraPayTxId(null)
+          setQrisStatus('waiting')
+        } else {
+          setAstraPayError('Tidak dapat terhubung ke AstraPay')
+        }
+      })
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, isDemo, selectedPayment])
+
+  useEffect(() => {
+    if (step !== 'merchant_reveal') return
+    const t = setTimeout(() => setMerchantPhase('dashboard'), 5500)
+    return () => clearTimeout(t)
+  }, [step])
+
+  const qrisConfig = {
+    waiting:   { text: 'Menunggu pembayaran via AstraPay...', color: 'text-gray-400' },
+    detected:  { text: 'Pembayaran terdeteksi ✓',             color: 'text-blue-500'  },
+    verifying: { text: 'Memverifikasi transaksi...',           color: 'text-amber-500' },
+    verified:  { text: 'Pembayaran diterima ✓',               color: 'text-green-500' },
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center" onClick={isDark ? undefined : onClose}>
+      <div
+        className={`w-full max-w-md rounded-t-3xl pb-8 overflow-y-auto max-h-[92vh] transition-colors duration-500 ${isDark ? 'bg-gray-950' : 'bg-white'}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-center pt-3 pb-1">
+          <div className={`w-10 h-1 rounded-full ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+        </div>
+
+        {/* ── Progress bar ── */}
+        {!['success', 'merchant_reveal'].includes(step) && (
+          <div className="flex items-start px-5 pt-2 pb-1">
+            {CHECKOUT_STEP_LABELS.map((label, idx) => (
+              <Fragment key={label}>
+                <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-extrabold transition-all duration-300 ${
+                    idx < currentStepIdx ? 'bg-green-500 text-white' :
+                    idx === currentStepIdx ? 'bg-app-blue text-white' :
+                    'bg-gray-100 text-gray-400'
+                  }`}>
+                    {idx < currentStepIdx ? '✓' : idx + 1}
+                  </div>
+                  <span className={`text-[8px] font-medium ${
+                    idx === currentStepIdx ? 'text-app-blue' :
+                    idx < currentStepIdx ? 'text-green-500' : 'text-gray-300'
+                  }`}>{label}</span>
+                </div>
+                {idx < CHECKOUT_STEP_LABELS.length - 1 && (
+                  <div className={`flex-1 h-0.5 mt-2.5 mx-1 transition-colors duration-300 ${idx < currentStepIdx ? 'bg-green-400' : 'bg-gray-100'}`} />
+                )}
+              </Fragment>
+            ))}
+          </div>
+        )}
+
+        {/* ── Cart Review ── */}
+        {step === 'cart_review' && (
           <div className="px-5 pb-8 pt-3">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="font-extrabold text-gray-900 text-lg">Konfirmasi Pembelian</h3>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500"
-              >
+              <h3 className="font-extrabold text-gray-900 text-lg">Keranjang ({totalQty})</h3>
+              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500">
                 <X size={18} />
               </button>
             </div>
-            <div className="flex gap-4 p-4 bg-gray-50 rounded-2xl mb-5">
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: style.color }}
-              >
-                <Icon size={24} className="text-white" />
-              </div>
-              <div>
-                <p className="font-bold text-gray-900 text-sm leading-snug">{product.name}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{product.category}</p>
-                <p className="text-xl font-extrabold text-app-blue mt-1 tracking-tight">
-                  {formatRp(product.price)}
-                </p>
-              </div>
+
+            <div className="space-y-2.5 mb-4">
+              {cart.map((item) => {
+                const { color, Icon } = getCategoryStyle(item.product.category)
+                return (
+                  <div key={item.product.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: color }}>
+                      <Icon size={16} className="text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm truncate">{item.product.name}</p>
+                      <p className="text-app-blue font-bold text-sm">{formatRp(item.product.price * item.quantity)}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        onClick={() => item.quantity === 1 ? onRemove(item.product.id) : onUpdateQty(item.product.id, item.quantity - 1)}
+                        className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors text-base leading-none font-bold"
+                      >
+                        −
+                      </button>
+                      <span className="text-sm font-bold text-gray-900 w-5 text-center">{item.quantity}</span>
+                      <button
+                        onClick={() => onUpdateQty(item.product.id, item.quantity + 1)}
+                        className="w-6 h-6 flex items-center justify-center rounded-full bg-app-blue text-white hover:bg-app-blue-light transition-colors text-base leading-none font-bold"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-            <div className="bg-app-blue-pale rounded-xl px-4 py-3 flex items-center justify-between mb-5">
-              <span className="text-sm text-gray-600">Metode Pembayaran</span>
-              <span className="text-sm font-bold text-app-blue">AstraPay + QRIS</span>
+
+            <div className="bg-gray-50 rounded-xl px-4 py-3 flex justify-between items-center mb-5">
+              <span className="text-sm text-gray-600">Subtotal ({totalQty} item)</span>
+              <span className="font-extrabold text-gray-900 text-base">{formatRp(subtotal)}</span>
             </div>
+
             <button
-              onClick={() => setStep('qris')}
+              onClick={() => { setStep('shipping'); onDemoProgress?.('checkout') }}
               className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-base"
             >
-              <ShoppingBag size={18} /> Bayar Sekarang
+              <ShoppingCart size={18} /> Checkout Semuanya <ArrowRight size={18} />
             </button>
           </div>
         )}
 
+        {/* ── Shipping ── */}
+        {step === 'shipping' && (
+          <div className="px-5 pb-8 pt-3">
+            <div className="flex items-center gap-3 mb-5">
+              <button onClick={() => setStep('cart_review')} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
+                <ArrowLeft size={16} />
+              </button>
+              <h3 className="font-extrabold text-gray-900 text-lg">Metode Pengiriman</h3>
+            </div>
+
+            <div className="space-y-2.5 mb-4">
+              {SHIPPING_OPTIONS.map((opt) => (
+                <button key={opt.id} onClick={() => setSelectedShipping(opt.id)}
+                  className={`w-full flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all text-left ${selectedShipping === opt.id ? 'border-app-blue bg-app-blue-pale' : 'border-gray-100 bg-white hover:border-gray-200'}`}
+                >
+                  <span className="text-lg flex-shrink-0">{opt.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm">{opt.name}</p>
+                    <p className="text-xs text-gray-400">{opt.duration}</p>
+                  </div>
+                  <p className={`text-sm font-bold flex-shrink-0 ${opt.price === 0 ? 'text-green-600' : 'text-gray-700'}`}>
+                    {opt.price === 0 ? 'Gratis' : formatRp(opt.price)}
+                  </p>
+                  <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${selectedShipping === opt.id ? 'border-app-blue bg-app-blue' : 'border-gray-300'}`}>
+                    {selectedShipping === opt.id && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Mini order summary */}
+            <div className="bg-gray-50 rounded-xl mb-5 overflow-hidden">
+              <button onClick={() => setSummaryOpen(!summaryOpen)} className="w-full flex items-center justify-between px-4 py-3">
+                <span className="text-sm font-semibold text-gray-700">Ringkasan Pesanan</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-extrabold text-app-blue">{formatRp(total)}</span>
+                  <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${summaryOpen ? 'rotate-180' : ''}`} />
+                </div>
+              </button>
+              {summaryOpen && (
+                <div className="px-4 pb-3 border-t border-gray-100">
+                  <div className="space-y-1.5 pt-2.5 mb-2">
+                    {cart.map((item) => (
+                      <div key={item.product.id} className="flex justify-between">
+                        <span className="text-xs text-gray-600">{item.quantity > 1 ? `${item.quantity}× ` : ''}{item.product.name}</span>
+                        <span className="text-xs font-medium text-gray-800">{formatRp(item.product.price * item.quantity)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-t border-gray-200 pt-2 space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-xs text-gray-500">Subtotal</span>
+                      <span className="text-xs text-gray-700">{formatRp(subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-xs text-gray-500">{shipping.name}</span>
+                      <span className="text-xs text-gray-700">{shipping.price === 0 ? 'Gratis' : formatRp(shipping.price)}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-gray-200 pt-1.5">
+                      <span className="text-sm font-bold text-gray-900">Total</span>
+                      <span className="text-sm font-extrabold text-app-blue">{formatRp(total)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button onClick={() => setStep('buyer_info')}
+              className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-base"
+            >
+              Lanjut <ArrowRight size={18} />
+            </button>
+          </div>
+        )}
+
+        {/* ── Buyer Info ── */}
+        {step === 'buyer_info' && (
+          <div className="px-5 pb-8 pt-3">
+            <div className="flex items-center gap-3 mb-4">
+              <button onClick={() => setStep('shipping')} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
+                <ArrowLeft size={16} />
+              </button>
+              <h3 className="font-extrabold text-gray-900 text-lg">Info Pembeli</h3>
+            </div>
+
+            <div className="space-y-3 mb-4">
+              {/* Nama */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nama Lengkap</label>
+                <input type="text" value={buyerName} onChange={(e) => { setBuyerName(e.target.value); setFormErrors((p) => ({ ...p, nama: '' })) }}
+                  placeholder="contoh: Justin Bieber" autoFocus
+                  className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors ${formErrors.nama ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                />
+                {formErrors.nama && <p className="text-xs text-red-500 mt-1">{formErrors.nama}</p>}
+              </div>
+
+              {/* WhatsApp */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nomor WhatsApp</label>
+                <input type="tel" value={buyerPhone} onChange={(e) => { setBuyerPhone(e.target.value); setFormErrors((p) => ({ ...p, wa: '' })) }}
+                  placeholder="08123456789"
+                  className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors ${formErrors.wa ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                />
+                {formErrors.wa && <p className="text-xs text-red-500 mt-1">{formErrors.wa}</p>}
+              </div>
+
+              {/* Shipping address fields */}
+              {selectedShipping !== 'pickup' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                      <MapPin size={13} className="text-gray-400" /> Alamat Lengkap
+                    </label>
+                    <textarea value={buyerAddress} onChange={(e) => { setBuyerAddress(e.target.value); setFormErrors((p) => ({ ...p, alamat: '' })) }}
+                      placeholder={'Jl. Contoh No. 123\nRT 01/RW 02\nKelurahan Contoh'} rows={3}
+                      className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors resize-none ${formErrors.alamat ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                    />
+                    {formErrors.alamat && <p className="text-xs text-red-500 mt-1">{formErrors.alamat}</p>}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Kota</label>
+                      <select value={kota} onChange={(e) => { setKota(e.target.value); setFormErrors((p) => ({ ...p, kota: '' })) }}
+                        className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors appearance-none ${formErrors.kota ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                      >
+                        <option value="">Pilih kota</option>
+                        {CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      {formErrors.kota && <p className="text-xs text-red-500 mt-1">{formErrors.kota}</p>}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Kode Pos</label>
+                      <input type="text" value={kodePos} onChange={(e) => { setKodePos(e.target.value.replace(/\D/g, '').slice(0, 5)); setFormErrors((p) => ({ ...p, kodePos: '' })) }}
+                        placeholder="12345" maxLength={5}
+                        className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors ${formErrors.kodePos ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                      />
+                      {formErrors.kodePos && <p className="text-xs text-red-500 mt-1">{formErrors.kodePos}</p>}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Mini order summary */}
+            <div className="bg-gray-50 rounded-xl mb-4 overflow-hidden">
+              <button onClick={() => setSummaryOpen(!summaryOpen)} className="w-full flex items-center justify-between px-4 py-3">
+                <span className="text-sm font-semibold text-gray-700">Ringkasan Pesanan</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-extrabold text-app-blue">{formatRp(total)}</span>
+                  <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${summaryOpen ? 'rotate-180' : ''}`} />
+                </div>
+              </button>
+              {summaryOpen && (
+                <div className="px-4 pb-3 border-t border-gray-100">
+                  <div className="space-y-1.5 pt-2.5 mb-2">
+                    {cart.map((item) => (
+                      <div key={item.product.id} className="flex justify-between">
+                        <span className="text-xs text-gray-600">{item.quantity > 1 ? `${item.quantity}× ` : ''}{item.product.name}</span>
+                        <span className="text-xs font-medium text-gray-800">{formatRp(item.product.price * item.quantity)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-t border-gray-200 pt-2 space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-xs text-gray-500">Subtotal</span>
+                      <span className="text-xs text-gray-700">{formatRp(subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-xs text-gray-500">{shipping.name}</span>
+                      <span className="text-xs text-gray-700">{shipping.price === 0 ? 'Gratis' : formatRp(shipping.price)}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-gray-200 pt-1.5">
+                      <span className="text-sm font-bold text-gray-900">Total</span>
+                      <span className="text-sm font-extrabold text-app-blue">{formatRp(total)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button onClick={() => { if (validateBuyerInfo()) setStep('payment_method') }}
+              className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-base"
+            >
+              Lanjut <ArrowRight size={18} />
+            </button>
+          </div>
+        )}
+
+        {/* ── Payment Method ── */}
+        {step === 'payment_method' && (
+          <div className="px-5 pb-8 pt-3">
+            <div className="flex items-center gap-3 mb-5">
+              <button onClick={() => setStep('buyer_info')} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
+                <ArrowLeft size={16} />
+              </button>
+              <h3 className="font-extrabold text-gray-900 text-lg">Metode Pembayaran</h3>
+            </div>
+
+            <div className="bg-gray-50 rounded-2xl px-4 py-3.5 mb-4 space-y-2">
+              {cart.map((item) => {
+                const { color, Icon } = getCategoryStyle(item.product.category)
+                return (
+                  <div key={item.product.id} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: color }}>
+                        <Icon size={9} className="text-white" />
+                      </div>
+                      <span className="text-xs text-gray-600 truncate max-w-[150px]">
+                        {item.product.name}{item.quantity > 1 ? ` ×${item.quantity}` : ''}
+                      </span>
+                    </div>
+                    <span className="text-xs font-medium text-gray-800">{formatRp(item.product.price * item.quantity)}</span>
+                  </div>
+                )
+              })}
+              <div className="border-t border-gray-200 pt-2 flex items-center justify-between">
+                <span className="text-xs text-gray-500 flex items-center gap-1"><Truck size={10} />{shipping.name}</span>
+                <span className="text-xs text-gray-700">{shipping.price === 0 ? 'Gratis' : formatRp(shipping.price)}</span>
+              </div>
+              <div className="border-t border-gray-200 pt-2 flex items-center justify-between">
+                <span className="text-sm font-bold text-gray-900">Total</span>
+                <span className="text-base font-extrabold text-app-blue">{formatRp(total)}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2.5 mb-5">
+              {[
+                { id: 'astrapay' as PaymentMethod, name: 'AstraPay + QRIS', desc: '+50 AstraPoints per transaksi', badge: '⭐ Rekomendasi', color: 'text-app-blue' },
+                { id: 'transfer' as PaymentMethod, name: 'Transfer Bank',    desc: 'BCA, Mandiri, BNI',             badge: null,            color: 'text-gray-700' },
+                { id: 'cod'      as PaymentMethod, name: 'Bayar di Tempat',  desc: 'Bayar saat diterima',           badge: null,            color: 'text-gray-700' },
+              ].map((method) => (
+                <button key={method.id} onClick={() => setSelectedPayment(method.id)}
+                  className={`w-full flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all text-left ${selectedPayment === method.id ? 'border-app-blue bg-app-blue-pale' : 'border-gray-100 bg-white hover:border-gray-200'}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className={`font-semibold text-sm ${method.color}`}>{method.name}</p>
+                      {method.badge && <span className="text-[9px] bg-amber-100 text-amber-700 font-bold px-1.5 py-0.5 rounded-full">{method.badge}</span>}
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">{method.desc}</p>
+                  </div>
+                  <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${selectedPayment === method.id ? 'border-app-blue bg-app-blue' : 'border-gray-300'}`}>
+                    {selectedPayment === method.id && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <button onClick={() => setStep('qris')}
+              className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-base"
+            >
+              <ShoppingBag size={18} /> Bayar {formatRp(total)}
+            </button>
+          </div>
+        )}
+
+        {/* ── QRIS / AstraPay ── */}
         {step === 'qris' && (
           <div className="px-5 pb-8 pt-3 text-center">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-extrabold text-gray-900 text-lg">Scan QRIS</h3>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500"
-              >
-                <X size={18} />
+            <div className="flex items-center gap-3 mb-4">
+              <button onClick={() => { if (pollRef.current) clearInterval(pollRef.current); setStep('payment_method') }}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
+                <ArrowLeft size={16} />
               </button>
+              <h3 className="font-extrabold text-gray-900 text-lg">
+                {!isDemo && selectedPayment === 'astrapay' ? 'AstraPay' : 'Scan QRIS'}
+              </h3>
             </div>
-            <p className="text-3xl font-extrabold text-app-blue tracking-tight mb-4">
-              {formatRp(product.price)}
-            </p>
-            <div className="bg-gray-50 rounded-2xl p-3 inline-flex mb-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=astratoko-${SELLER.slug}-${product.id}&bgcolor=ffffff&color=3B5BDB&margin=2`}
-                alt="QRIS"
-                width={180}
-                height={180}
-                className="rounded-lg"
-              />
+
+            <p className="text-3xl font-extrabold text-app-blue tracking-tight mb-5">{formatRp(total)}</p>
+
+            {/* Real AstraPay UI */}
+            {!isDemo && selectedPayment === 'astrapay' ? (
+              <div className="space-y-4">
+                {astraPayError ? (
+                  <div className="bg-red-50 border border-red-100 rounded-2xl px-4 py-5">
+                    <p className="text-sm font-semibold text-red-700 mb-1">Gagal terhubung ke AstraPay</p>
+                    <p className="text-xs text-red-500 font-mono break-all mb-3">{astraPayError}</p>
+                    <button onClick={() => { setAstraPayTxId(null); setAstraPayError(null) }}
+                      className="text-xs font-bold text-red-600 underline">Coba Lagi</button>
+                  </div>
+                ) : (
+                  <>
+                    {/* AstraPay logo / status card */}
+                    <div className="bg-gradient-to-br from-app-blue to-blue-700 rounded-2xl px-5 py-6 text-white">
+                      <div className="flex items-center justify-center gap-2 mb-4">
+                        <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                          <span className="text-white font-extrabold text-xs">AP</span>
+                        </div>
+                        <span className="font-extrabold text-lg">AstraPay</span>
+                      </div>
+                      {astraPayUrl ? (
+                        <>
+                          <div className="flex items-center justify-center gap-2 mb-2">
+                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                            <p className="text-sm text-blue-100 font-medium">Menunggu pembayaran...</p>
+                          </div>
+                          <p className="text-[10px] text-blue-200 text-center">
+                            Selesaikan pembayaran di tab AstraPay yang terbuka
+                          </p>
+                        </>
+                      ) : (
+                        <div className="flex items-center justify-center gap-2">
+                          <svg className="animate-spin h-4 w-4 text-blue-200 flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                          </svg>
+                          <p className="text-sm text-blue-100">Membuat sesi pembayaran...</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {astraPayUrl && (
+                      <>
+                        <a href={astraPayUrl} target="_blank" rel="noopener noreferrer"
+                          className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm"
+                        >
+                          Buka AstraPay <ArrowRight size={16} />
+                        </a>
+                        {astraPayTxId && (
+                          <p className="text-[10px] text-gray-300 font-mono">
+                            TX: {astraPayTxId}
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+
+                <button onClick={() => { if (pollRef.current) clearInterval(pollRef.current); setStep('payment_failed') }}
+                  className="text-[10px] text-gray-300 hover:text-gray-400 transition-colors">
+                  Simulasi timeout →
+                </button>
+              </div>
+            ) : (
+              /* Demo QRIS UI */
+              <>
+                <div className="relative bg-gray-50 rounded-2xl p-3 inline-flex mb-2 mx-auto">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=astratoko-${seller.slug}-demo&bgcolor=ffffff&color=1a1a2e&margin=2`}
+                    alt="QRIS" width={180} height={180} className="rounded-lg"
+                  />
+                  {qrisStatus === 'waiting' && (
+                    <div className="absolute inset-3 overflow-hidden rounded-lg pointer-events-none">
+                      <div className="w-full h-0.5 bg-blue-500/70 shadow-[0_0_8px_rgba(59,130,246,0.8)] animate-shimmer-scan" />
+                    </div>
+                  )}
+                  {qrisStatus === 'detected' && (
+                    <div className="absolute inset-0 bg-green-500/10 rounded-2xl flex items-center justify-center">
+                      <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center animate-scale-in">
+                        <div className="text-2xl">✓</div>
+                      </div>
+                    </div>
+                  )}
+                  {(qrisStatus === 'verifying' || qrisStatus === 'verified') && (
+                    <div className={`absolute inset-0 rounded-2xl flex items-center justify-center ${qrisStatus === 'verified' ? 'bg-green-500/15' : 'bg-blue-500/10'}`}>
+                      {qrisStatus === 'verifying' ? (
+                        <svg className="animate-spin h-10 w-10 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <div className="text-5xl animate-bounce-in">✓</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="h-6 flex items-center justify-center mb-1">
+                  <p className={`text-sm font-medium transition-all duration-500 ${qrisConfig[qrisStatus].color}`}>
+                    {qrisConfig[qrisStatus].text}
+                  </p>
+                </div>
+                <p className="text-xs text-gray-400 mb-4">{seller.name} · AstraPay</p>
+                {isDemo && qrisStatus === 'waiting' && (
+                  <p className="text-xs text-gray-300 mb-3">Demo · simulasi otomatis ~8 detik</p>
+                )}
+                {!isDemo && (
+                  <button onClick={handleConfirm} disabled={confirming}
+                    className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-70 text-white font-bold py-4 rounded-2xl transition-colors text-sm flex items-center justify-center gap-2"
+                  >
+                    {confirming ? <><svg className="animate-spin h-4 w-4 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Memproses...</> : 'Konfirmasi Pembayaran'}
+                  </button>
+                )}
+                <button onClick={() => setStep('payment_failed')} className="text-[10px] text-gray-300 hover:text-gray-400 mt-3 transition-colors">
+                  Simulasi gagal →
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Payment Failed ── */}
+        {step === 'payment_failed' && (
+          <div className="px-5 pb-8 pt-4 text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce-in">
+              <X size={30} className="text-red-500" />
             </div>
-            <p className="text-sm text-gray-500 mb-1">
-              Scan dengan AstraPay atau e-wallet apapun
+            <h3 className="text-xl font-extrabold text-gray-900 mb-1">Pembayaran Gagal</h3>
+            <p className="text-sm text-gray-500 mb-1">Transaksi tidak dapat diproses</p>
+            <p className="text-xs text-gray-400 mb-8 leading-relaxed">
+              Koneksi terputus atau saldo tidak mencukupi.<br />Silakan coba lagi.
             </p>
-            <p className="text-xs text-gray-400 mb-5">{SELLER.name}</p>
-            <button
-              onClick={() => setStep('success')}
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-2xl transition-colors text-sm"
+
+            <button onClick={() => { setStep('qris'); setQrisStatus('waiting') }}
+              className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-base mb-3"
             >
-              Konfirmasi Pembayaran
+              Coba Lagi
+            </button>
+            <button onClick={() => setStep('payment_method')}
+              className="w-full border-2 border-gray-200 text-gray-600 font-semibold py-3.5 rounded-2xl hover:bg-gray-50 transition-colors text-sm mb-2"
+            >
+              Ganti Metode Pembayaran
+            </button>
+            <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600 py-2 transition-colors">
+              Batalkan pesanan
             </button>
           </div>
         )}
 
+        {/* ── Success ── */}
         {step === 'success' && (
           <div className="px-5 pb-8 pt-4 text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+            <Confetti active />
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3 animate-bounce-in">
               <CheckCircle size={32} className="text-green-600" />
             </div>
-            <h3 className="text-xl font-extrabold text-gray-900 mb-1">Pembayaran Berhasil!</h3>
-            <p className="text-3xl font-extrabold text-green-600 tracking-tight mb-1">
-              {formatRp(product.price)}
-            </p>
-            <p className="text-sm text-gray-400 mb-5">diterima oleh {SELLER.name}</p>
+            <h3 className="text-xl font-extrabold text-gray-900 mb-0.5">Pembayaran Berhasil!</h3>
+            <p className="text-3xl font-extrabold text-green-600 tracking-tight leading-none mb-1">{formatRp(total)}</p>
+            <p className="text-sm text-gray-400 mb-0.5">via AstraPay · {seller.name}</p>
+            {orderId && <p className="text-xs text-gray-300 font-mono mb-5">#{orderId.slice(0, 8).toUpperCase()}</p>}
 
-            {/* AstraPoints */}
-            <div className="bg-app-blue rounded-2xl px-4 py-4 text-white flex items-center justify-between mb-5">
+            <div className="bg-app-blue rounded-2xl px-4 py-4 text-white flex items-center justify-between mb-5 animate-fadein" style={{ animationDelay: '0.2s' }}>
               <div className="text-left">
-                <p className="text-xs text-blue-200 mb-0.5">AstraPoints ditambahkan</p>
-                <p className="text-3xl font-extrabold tracking-tight leading-none">+50</p>
-                <p className="text-xs text-blue-200 mt-0.5">tukar jadi saldo AstraPay</p>
+                <p className="text-xs text-blue-200 mb-0.5">AstraPoints kamu</p>
+                <p className="text-3xl font-extrabold tracking-tight leading-none">+{totalQty * 50}</p>
+                <p className="text-[10px] text-blue-200 mt-1">tukar jadi saldo AstraPay</p>
               </div>
               <Star size={36} className="text-astrapay-gold flex-shrink-0" fill="currentColor" />
             </div>
 
-            <button
-              onClick={onClose}
-              className="w-full border-2 border-app-blue text-app-blue font-bold py-3.5 rounded-2xl hover:bg-app-blue-pale transition-colors"
-            >
-              Lanjut Belanja
-            </button>
+            {isDemoMode ? (
+              <div className="animate-fadein" style={{ animationDelay: '0.5s' }}>
+                <button onClick={() => setStep('merchant_reveal')}
+                  className="w-full bg-gray-900 hover:bg-gray-800 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm mb-2"
+                >
+                  Lihat yang terjadi di merchant →
+                </button>
+                <button onClick={onClose} className="w-full text-xs text-gray-400 hover:text-gray-600 py-2 transition-colors">
+                  Lanjut jelajahi toko
+                </button>
+              </div>
+            ) : (
+              <button onClick={onClose} className="w-full border-2 border-app-blue text-app-blue font-bold py-3.5 rounded-2xl hover:bg-app-blue-pale transition-colors">
+                Lanjut Belanja
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ── Merchant Reveal ── */}
+        {step === 'merchant_reveal' && (
+          <div className="px-5 pb-8 pt-4 min-h-[520px]">
+            {merchantPhase === 'intro' ? (
+              <div className="flex flex-col justify-center min-h-[440px] animate-fade-blur-in">
+                <div className="text-4xl mb-8 text-center">✨</div>
+
+                <div className="space-y-5 mb-10">
+                  {[
+                    { delay: '0s',    label: 'Pembayaran berhasil.',                                              style: 'text-green-400 font-extrabold text-lg' },
+                    { delay: '0.6s',  label: 'Pelanggan kini tersimpan di database tokomu.',                     style: 'text-gray-300 text-sm leading-relaxed' },
+                    { delay: '1.2s',  label: 'Transaksi masuk langsung ke dashboard AstraToko.',                  style: 'text-gray-300 text-sm leading-relaxed' },
+                    { delay: '1.8s',  label: 'Tidak ada komisi marketplace untuk repeat order berikutnya.',       style: 'text-astrapay-gold text-sm font-semibold leading-relaxed' },
+                  ].map((line) => (
+                    <p key={line.label} className={`animate-fadein ${line.style}`} style={{ animationDelay: line.delay, opacity: 0, animationFillMode: 'forwards' }}>
+                      {line.label}
+                    </p>
+                  ))}
+                </div>
+
+                <button onClick={() => setMerchantPhase('dashboard')}
+                  className="w-full bg-white/10 hover:bg-white/15 border border-white/20 text-white text-sm font-semibold py-3 rounded-xl transition-colors animate-fadein"
+                  style={{ animationDelay: '2.5s', opacity: 0, animationFillMode: 'forwards' }}
+                >
+                  Lihat Dashboard →
+                </button>
+                <p className="text-gray-600 text-[10px] mt-3 text-center animate-fadein" style={{ animationDelay: '2.5s', opacity: 0, animationFillMode: 'forwards' }}>
+                  otomatis dalam beberapa detik
+                </p>
+              </div>
+            ) : (
+              <div className="animate-fadein">
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Dashboard · Toko Rizky</p>
+                  <div className="flex items-center gap-1.5 text-[10px] text-green-400 font-medium">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />Live
+                  </div>
+                </div>
+                <MerchantDashboard cart={cart} buyerName={buyerName} shippingName={shipping.name} />
+                <div className="mt-5 animate-fadein" style={{ animationDelay: '0.6s' }}>
+                  <Link href="/mulai" className="w-full bg-white text-gray-900 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 text-sm hover:bg-gray-100 transition-colors mb-2">
+                    Buat Toko Saya Gratis <ArrowRight size={15} />
+                  </Link>
+                  <button onClick={onClose} className="w-full text-xs text-gray-600 hover:text-gray-400 py-2 transition-colors">
+                    Lanjut jelajahi toko
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -171,142 +1168,285 @@ function CheckoutModal({ product, onClose }: { product: Product; onClose: () => 
   )
 }
 
-export default function StorefrontPage() {
-  const [selected, setSelected] = useState<Product | null>(null)
-  const [search, setSearch] = useState('')
-  const [wishlist, setWishlist] = useState<Set<string>>(new Set())
+// ── Seller Preview Banner ─────────────────────────────────────────────────────
+
+function SellerPreviewBanner({ slug }: { slug: string }) {
+  const [isOwner, setIsOwner] = useState(false)
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined') setIsOwner(localStorage.getItem('seller_slug') === slug)
+  }, [slug])
+  if (!isOwner) return null
+  return (
+    <div className="bg-app-blue px-4 py-3 flex items-center gap-3">
+      <div className="flex-1 min-w-0">
+        <p className="text-white text-xs font-bold">Ini tampilan tokomu di mata pembeli</p>
+        <p className="text-blue-200 text-[10px] mt-0.5">Bagikan link ini ke repeat buyer lewat WhatsApp</p>
+      </div>
+      <Link href="/dashboard" className="text-white text-xs font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg flex-shrink-0 transition-colors">Dashboard</Link>
+    </div>
+  )
+}
+
+// ── Storefront Page ───────────────────────────────────────────────────────────
+
+export default function StorefrontPage({ params }: { params: { slug: string } }) {
+  const [seller,           setSeller]           = useState<Seller | null>(null)
+  const [products,         setProducts]         = useState<Product[]>([])
+  const [loading,          setLoading]          = useState(true)
+  const [notFound,         setNotFound]         = useState(false)
+  const [search,           setSearch]           = useState('')
+  const [categoryFilter,   setCategoryFilter]   = useState('all')
+  const [wishlist,         setWishlist]         = useState<Set<string>>(new Set())
+  const [isDemoMode,       setIsDemoMode]       = useState(false)
+  const [demoProgress,     setDemoProgress]     = useState<DemoProgress>('browse')
+  const [toastVisible,     setToastVisible]     = useState(false)
+  const [pointsBannerOpen, setPointsBannerOpen] = useState(true)
+
+  // Cart state
+  const [cart,             setCart]             = useState<CartItem[]>([])
+  const [previewProduct,   setPreviewProduct]   = useState<Product | null>(null)
+  const [isCheckoutOpen,   setIsCheckoutOpen]   = useState(false)
+  const [isCartSheetOpen,  setIsCartSheetOpen]  = useState(false)
+  const [cartToastProduct, setCartToastProduct] = useState<Product | null>(null)
+  const [cartToastVisible, setCartToastVisible] = useState(false)
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search)
+    const demo = searchParams.get('demo') === 'true'
+    setIsDemoMode(demo)
+    if (demo) {
+      setTimeout(() => setToastVisible(true), 600)
+      setTimeout(() => setToastVisible(false), 5500)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetch(`/api/sellers/${params.slug}`)
+      .then((r) => { if (r.status === 404) { setNotFound(true); return null } return r.json() })
+      .then((json) => { if (!json) return; setSeller(json.seller); setProducts(json.products) })
+      .finally(() => setLoading(false))
+  }, [params.slug])
+
+  const addToCart = (product: Product) => {
+    setCart((prev) => {
+      const existing = prev.find((item) => item.product.id === product.id)
+      if (existing) return prev.map((item) => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item)
+      return [...prev, { product, quantity: 1 }]
+    })
+    setCartToastProduct(product)
+    setCartToastVisible(true)
+    setTimeout(() => setCartToastVisible(false), 2500)
+    if (isDemoMode && demoProgress === 'browse') setDemoProgress('select')
+  }
+
+  const removeFromCart = (productId: string) => setCart((prev) => prev.filter((item) => item.product.id !== productId))
+
+  const updateQuantity = (productId: string, qty: number) => {
+    if (qty <= 0) { removeFromCart(productId); return }
+    setCart((prev) => prev.map((item) => item.product.id === productId ? { ...item, quantity: qty } : item))
+  }
+
+  const handleBuyNow = (product: Product) => {
+    setCart([{ product, quantity: 1 }])
+    setIsCheckoutOpen(true)
+    if (isDemoMode && demoProgress === 'browse') setDemoProgress('select')
+  }
+
+  const handleCheckoutFromCart = () => {
+    setIsCartSheetOpen(false)
+    setIsCheckoutOpen(true)
+  }
 
   const toggleWishlist = (id: string) =>
-    setWishlist((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) { next.delete(id) } else { next.add(id) }
-      return next
-    })
-
-  const filtered = PRODUCTS.filter(
-    (p) =>
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.category.toLowerCase().includes(search.toLowerCase()),
-  )
+    setWishlist((prev) => { const next = new Set(prev); if (next.has(id)) { next.delete(id) } else { next.add(id) } return next })
 
   const handleShare = () => {
-    if (typeof navigator !== 'undefined' && navigator.share) {
-      navigator.share({ title: SELLER.name, url: window.location.href })
-    } else if (typeof navigator !== 'undefined') {
-      navigator.clipboard.writeText(window.location.href)
-    }
+    const url = `${window.location.origin}/toko/${params.slug}`
+    if (typeof navigator !== 'undefined' && navigator.share) navigator.share({ title: seller?.name ?? '', url })
+    else if (typeof navigator !== 'undefined') navigator.clipboard.writeText(url)
   }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white max-w-md mx-auto">
+        <div className="bg-white border-b border-gray-100 px-4 pt-4 pb-3">
+          <div className="h-10 bg-gray-100 rounded-xl animate-pulse mb-3" />
+          <div className="h-4 w-48 bg-gray-100 rounded animate-pulse mb-3" />
+          <div className="h-9 bg-gray-100 rounded-xl animate-pulse" />
+        </div>
+        <div className="px-4 py-4 grid grid-cols-2 gap-3">
+          {Array.from({ length: 6 }).map((_, i) => <ProductSkeleton key={i} />)}
+        </div>
+      </div>
+    )
+  }
+
+  if (notFound || !seller) {
+    return (
+      <div className="min-h-screen bg-white max-w-md mx-auto flex flex-col items-center justify-center px-6 text-center">
+        <div className="w-20 h-20 bg-gray-50 border border-gray-100 rounded-3xl flex items-center justify-center mb-5">
+          <span className="text-4xl">🔍</span>
+        </div>
+        <h1 className="font-extrabold text-gray-900 text-xl mb-2">Toko tidak ditemukan</h1>
+        <p className="text-gray-500 text-sm mb-1">
+          <span className="font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-700 text-xs">astratoko.com/{params.slug}</span>
+        </p>
+        <p className="text-gray-400 text-sm mb-8 mt-2">URL ini belum terdaftar atau sudah tidak aktif.</p>
+        <Link href="/mulai"
+          className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-3.5 rounded-2xl text-sm flex items-center justify-center gap-2 transition-colors mb-3"
+        >
+          Buat Toko Gratis →
+        </Link>
+        <Link href="/" className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
+          Kembali ke Beranda
+        </Link>
+      </div>
+    )
+  }
+
+  const categories = ['all', ...Array.from(new Set(products.map((p) => p.category).filter(Boolean)))]
+  const filtered = products.filter((p) =>
+    (categoryFilter === 'all' || p.category === categoryFilter) &&
+    (p.name.toLowerCase().includes(search.toLowerCase()) || p.category.toLowerCase().includes(search.toLowerCase()))
+  )
+  const cartTotal    = cart.reduce((s, item) => s + item.product.price * item.quantity, 0)
+  const cartTotalQty = cart.reduce((s, item) => s + item.quantity, 0)
 
   return (
     <div className="min-h-screen bg-white max-w-md mx-auto">
-      {/* Header */}
+      {isDemoMode && <DemoFloatingPill progress={demoProgress} />}
+      {isDemoMode && <DemoWelcomeToast visible={toastVisible} />}
+      <CartToast product={cartToastProduct} visible={cartToastVisible} />
+      <SellerPreviewBanner slug={params.slug} />
+
+      {/* Sticky header */}
       <div className="bg-white border-b border-gray-100 sticky top-0 z-40 px-4 pt-4 pb-3">
         <div className="flex items-center gap-3 mb-3">
-          <Link
-            href="/"
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0"
-          >
+          <Link href={isDemoMode ? '/demo' : '/'} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
             <ArrowLeft size={18} />
           </Link>
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <div className="w-10 h-10 bg-app-blue rounded-xl flex items-center justify-center flex-shrink-0">
-              <span className="text-white font-extrabold leading-none">R</span>
+              <span className="text-white font-extrabold leading-none">{seller.initial}</span>
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1">
-                <p className="font-extrabold text-gray-900 text-base leading-tight">
-                  {SELLER.name}
-                </p>
+                <p className="font-extrabold text-gray-900 text-base leading-tight">{seller.name}</p>
                 <span className="text-app-blue text-sm">✓</span>
               </div>
-              <p className="text-xs text-gray-400 truncate">
-                Spare part &amp; aksesori motor · {SELLER.location}
-              </p>
+              <p className="text-xs text-gray-400 truncate">Toko online · {seller.location || seller.platform}</p>
             </div>
           </div>
-          <button
-            onClick={handleShare}
-            className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-100 text-gray-500 flex-shrink-0"
-          >
-            <Share2 size={16} />
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Cart icon in header */}
+            {cart.length > 0 && (
+              <button onClick={() => setIsCartSheetOpen(true)} className="relative w-9 h-9 flex items-center justify-center rounded-xl bg-app-blue text-white">
+                <ShoppingCart size={16} />
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] font-bold text-white flex items-center justify-center">{cartTotalQty}</span>
+              </button>
+            )}
+            <button onClick={handleShare} className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-100 text-gray-500">
+              <Share2 size={16} />
+            </button>
+          </div>
         </div>
 
-        {/* Stats */}
         <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
-          <span className="flex items-center gap-1">
-            <Star size={12} className="text-yellow-400" fill="currentColor" />
-            <strong className="text-gray-900">4,9</strong> rating
-          </span>
-          <span><strong className="text-gray-900">312</strong> terjual</span>
+          <span className="flex items-center gap-1"><Star size={12} className="text-yellow-400" fill="currentColor" /><strong className="text-gray-900">4,9</strong> rating</span>
+          <span><strong className="text-gray-900">{products.length}</strong> produk</span>
           <span><strong className="text-gray-900">98%</strong> respon cepat</span>
         </div>
 
-        {/* AstraPoints banner */}
-        <div className="bg-amber-50 rounded-xl px-3 py-2.5 flex items-center gap-2.5 mb-3">
-          <div className="w-7 h-7 bg-astrapay-gold rounded-lg flex items-center justify-center flex-shrink-0">
-            <Star size={14} className="text-white" fill="currentColor" />
+        {pointsBannerOpen && (
+          <div className="bg-amber-50 rounded-xl px-3 py-2.5 flex items-center gap-2.5 mb-3">
+            <div className="w-7 h-7 bg-astrapay-gold rounded-lg flex items-center justify-center flex-shrink-0">
+              <Star size={14} className="text-white" fill="currentColor" />
+            </div>
+            <p className="text-xs font-medium text-amber-800 flex-1">Dapatkan 50 poin tiap transaksi — tukar jadi saldo AstraPay</p>
+            <button onClick={() => setPointsBannerOpen(false)} className="w-5 h-5 flex items-center justify-center rounded-full bg-amber-200/60 text-amber-600 hover:bg-amber-200 transition-colors flex-shrink-0">
+              <X size={11} />
+            </button>
           </div>
-          <p className="text-xs font-medium text-amber-800">
-            Earn 50 poin tiap transaksi — tukar jadi saldo AstraPay
-          </p>
-        </div>
+        )}
 
-        {/* Search */}
-        <input
-          type="text"
-          placeholder="Cari produk..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+        <input type="text" placeholder="Cari produk..." value={search} onChange={(e) => setSearch(e.target.value)}
           className="w-full bg-gray-100 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors"
         />
       </div>
 
-      {/* Products */}
-      <div className="px-4 py-4">
+      {/* Category filter */}
+      {categories.length > 2 && (
+        <div className="px-4 pt-3">
+          <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+            {categories.map((cat) => (
+              <button key={cat} onClick={() => setCategoryFilter(cat)}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${categoryFilter === cat ? 'bg-app-blue text-white border-app-blue' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+              >
+                {cat === 'all' ? 'Semua' : cat}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Product grid */}
+      <div className="px-4 py-4 pb-28">
         {filtered.length === 0 ? (
-          <div className="text-center py-16 text-gray-400 text-sm">
-            Produk tidak ditemukan
+          <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+            {search || categoryFilter !== 'all' ? (
+              <>
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
+                  <span className="text-3xl">🔍</span>
+                </div>
+                <p className="font-semibold text-gray-700 mb-1">Produk tidak ditemukan</p>
+                <p className="text-gray-400 text-sm mb-5">Coba kata kunci lain atau hapus filter.</p>
+                <button onClick={() => { setSearch(''); setCategoryFilter('all') }}
+                  className="text-app-blue text-sm font-semibold border border-app-blue/30 px-4 py-2 rounded-xl hover:bg-app-blue-pale transition-colors"
+                >
+                  Hapus filter
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
+                  <span className="text-3xl">📦</span>
+                </div>
+                <p className="font-semibold text-gray-700 mb-1">Toko sedang disiapkan</p>
+                <p className="text-gray-400 text-sm">Produk akan muncul di sini setelah seller menambahkannya.</p>
+              </>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            {filtered.map((product) => {
+            {filtered.map((product, index) => {
               const { color, Icon } = getCategoryStyle(product.category)
+              const isBestSeller = isDemoMode && index === 0
+              const soldCount = [124, 89, 67, 52, 43, 38][index % 6]
               return (
-                <div
-                  key={product.id}
-                  className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm"
+                <div key={product.id}
+                  className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm animate-fadein cursor-pointer group"
+                  style={{ animationDelay: `${index * 50}ms` }}
+                  onClick={() => setPreviewProduct(product)}
                 >
-                  {/* Colored header */}
-                  <div
-                    className="relative flex items-center justify-center py-7"
-                    style={{ backgroundColor: color }}
-                  >
-                    <Icon size={40} className="text-white" />
-                    <button
-                      aria-label="Simpan ke favorit"
-                      onClick={(e) => { e.stopPropagation(); toggleWishlist(product.id) }}
+                  <div className="relative flex items-center justify-center py-7 transition-opacity group-hover:opacity-90" style={{ backgroundColor: color }}>
+                    <Icon size={40} className="text-white transition-transform group-hover:scale-110 duration-200" />
+                    {isBestSeller && (
+                      <div className="absolute top-2 left-2 bg-astrapay-gold text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">🔥 TERLARIS</div>
+                    )}
+                    <button aria-label="Favorit" onClick={(e) => { e.stopPropagation(); toggleWishlist(product.id) }}
                       className="absolute top-2 right-2 w-6 h-6 bg-white/20 rounded-full flex items-center justify-center"
                     >
-                      <Star
-                        size={12}
-                        className={wishlist.has(product.id) ? 'text-yellow-300' : 'text-white'}
-                        fill={wishlist.has(product.id) ? 'currentColor' : 'none'}
-                      />
+                      <Star size={12} className={wishlist.has(product.id) ? 'text-yellow-300' : 'text-white'} fill={wishlist.has(product.id) ? 'currentColor' : 'none'} />
                     </button>
                   </div>
                   <div className="p-3">
-                    <p className="text-sm font-semibold text-gray-900 leading-snug mb-1 line-clamp-2">
-                      {product.name}
-                    </p>
-                    <p className="text-base font-extrabold text-app-blue tracking-tight mb-2.5">
-                      {formatRp(product.price)}
-                    </p>
-                    <button
-                      onClick={() => setSelected(product)}
-                      className="w-full bg-app-blue hover:bg-app-blue-light text-white text-xs font-bold py-2.5 rounded-xl transition-colors active:scale-[0.97]"
+                    <p className="text-sm font-semibold text-gray-900 leading-snug mb-0.5 line-clamp-2">{product.name}</p>
+                    <p className="text-[10px] text-gray-400 mb-1">{soldCount}x terjual</p>
+                    <p className="text-base font-extrabold text-app-blue tracking-tight mb-2.5">{formatRp(product.price)}</p>
+                    <button onClick={(e) => { e.stopPropagation(); addToCart(product) }}
+                      className="w-full bg-app-blue hover:bg-app-blue-light text-white text-xs font-bold py-2.5 rounded-xl transition-colors active:scale-[0.97] flex items-center justify-center gap-1"
                     >
-                      + Beli
+                      <ShoppingCart size={11} /> + Keranjang
                     </button>
                   </div>
                 </div>
@@ -316,19 +1456,75 @@ export default function StorefrontPage() {
         )}
       </div>
 
-      {/* Powered by */}
-      <div className="px-4 py-8 text-center">
-        <p className="text-xs text-gray-400">
-          Toko ini dikelola dengan{' '}
-          <Link href="/" className="text-app-blue font-medium">
-            AstraToko
-          </Link>{' '}
-          · Powered by AstraPay
-        </p>
+      {seller.whatsapp && (
+        <div className="px-4 pb-4">
+          <a href={`https://wa.me/${seller.whatsapp.replace(/^0/, '62').replace(/\s/g, '')}?text=${encodeURIComponent(`Halo, aku mau tanya soal produk di ${seller.name}`)}`}
+            target="_blank" rel="noopener noreferrer"
+            className="w-full bg-[#25D366] hover:bg-[#1fb85a] text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm"
+          >
+            <MessageCircle size={16} /> Chat Penjual via WhatsApp
+          </a>
+        </div>
+      )}
+
+      <div className="px-4 py-6 text-center">
+        <p className="text-xs text-gray-400">Toko ini dikelola dengan <Link href="/" className="text-app-blue font-medium">AstraToko</Link> · Powered by AstraPay</p>
       </div>
 
-      {selected && (
-        <CheckoutModal product={selected} onClose={() => setSelected(null)} />
+      {/* Floating cart bar */}
+      {cart.length > 0 && !isCheckoutOpen && !isCartSheetOpen && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] max-w-md">
+          <button onClick={() => setIsCartSheetOpen(true)}
+            className="w-full bg-gray-900 hover:bg-gray-800 text-white font-bold py-4 rounded-2xl flex items-center justify-between px-5 shadow-2xl transition-colors animate-slide-down"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="relative">
+                <ShoppingCart size={18} />
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-app-blue rounded-full text-[9px] font-bold flex items-center justify-center">{cartTotalQty}</span>
+              </div>
+              <span className="text-sm">{cartTotalQty} produk</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-extrabold">{formatRp(cartTotal)}</span>
+              <ArrowRight size={16} />
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* Product detail sheet */}
+      {previewProduct && seller && (
+        <ProductDetailSheet
+          product={previewProduct}
+          isDemoMode={isDemoMode}
+          onClose={() => setPreviewProduct(null)}
+          onAddToCart={(p) => { addToCart(p); setPreviewProduct(null) }}
+          onBuyNow={(p) => { setPreviewProduct(null); handleBuyNow(p) }}
+        />
+      )}
+
+      {/* Cart sheet */}
+      {isCartSheetOpen && (
+        <CartSheet
+          cart={cart}
+          onClose={() => setIsCartSheetOpen(false)}
+          onRemove={removeFromCart}
+          onUpdateQty={updateQuantity}
+          onCheckout={handleCheckoutFromCart}
+        />
+      )}
+
+      {/* Checkout modal */}
+      {isCheckoutOpen && seller && cart.length > 0 && (
+        <CheckoutModal
+          cart={cart}
+          seller={seller}
+          onClose={() => { setIsCheckoutOpen(false); setCart([]) }}
+          onRemove={removeFromCart}
+          onUpdateQty={updateQuantity}
+          isDemoMode={isDemoMode}
+          onDemoProgress={setDemoProgress}
+        />
       )}
     </div>
   )
