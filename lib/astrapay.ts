@@ -63,20 +63,14 @@ export type TxStatus = 'APP' | 'REJ' | 'PND' | 'TIM' | null
 export async function checkPaymentStatus(merchantTransactionId: string): Promise<{ status: TxStatus }> {
   try {
     const accessToken = await getAccessToken()
-    const ts   = timestamp()
-    const path = '/merchant-service/transaction-status'
-    const body = JSON.stringify({ merchantTransactionId })
-    const sig  = signService('POST', path, accessToken, body, ts)
 
-    const res = await fetch(`${BASE_URL}${path}`, {
+    const res = await fetch(`${BASE_URL}/merchant-service/transaction-status`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type':  'application/json',
-        'X-TIMESTAMP':   ts,
-        'X-SIGNATURE':   sig,
       },
-      body,
+      body: JSON.stringify({ merchantTransactionId }),
     })
 
     if (!res.ok) return { status: null }
