@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowRight, Check, Copy, ExternalLink, MapPin, MessageCircle, Phone } from 'lucide-react'
+import { formatRp } from '@/lib/utils'
 import Confetti from '@/components/Confetti'
 import { PRODUCTS } from '@/lib/mock-data'
 
@@ -236,6 +237,33 @@ function StepInfo({
   )
 }
 
+// ── Savings count-up ─────────────────────────────────────────────────────────
+
+function useCountUp(target: number, duration = 1200) {
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    if (target === 0) return
+    let animId: number
+    const start = Date.now()
+    const tick = () => {
+      const elapsed = Date.now() - start
+      const p = Math.min(elapsed / duration, 1)
+      setCount(Math.round(target * (1 - Math.pow(1 - p, 3))))
+      if (p < 1) animId = requestAnimationFrame(tick)
+    }
+    animId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(animId)
+  }, [target, duration])
+  return count
+}
+
+const PLATFORM_FEES: Record<string, number> = {
+  Shopee: 0.20,
+  Tokopedia: 0.22,
+  TikTok: 0.25,
+}
+const DEMO_GMV = 10_000_000
+
 // ── Step 2: Import Method ──────────────────────────────────────────────────────
 
 const IMPORT_OPTIONS = [
@@ -247,6 +275,56 @@ const IMPORT_OPTIONS = [
 ] as const
 
 type ImportOption = typeof IMPORT_OPTIONS[number]
+
+function SavingsReveal({ platform, onNext }: { platform: string; onNext: () => void }) {
+  const feeRate  = PLATFORM_FEES[platform] ?? 0.22
+  const savings  = Math.round(DEMO_GMV * (feeRate - 0.025) * 12)
+  const animated = useCountUp(savings, 1400)
+
+  return (
+    <div className="px-6 pb-10 animate-fadein pt-8 flex flex-col items-center text-center">
+      <div className="text-6xl mb-5">🎉</div>
+      <h2 className="text-[26px] font-extrabold text-gray-900 leading-tight mb-1.5">
+        Katalog kamu<br />siap diimpor!
+      </h2>
+      <p className="text-sm text-gray-500 mb-6">dari {platform}</p>
+
+      <div className="grid grid-cols-2 gap-2 w-full mb-6">
+        {['Produk ✓', 'Harga ✓', 'Stok ✓', 'Kategori ✓'].map((item) => (
+          <div key={item} className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm font-semibold text-gray-700 text-center">
+            {item}
+          </div>
+        ))}
+      </div>
+
+      {/* Savings card */}
+      <div className="w-full bg-green-50 border border-green-100 rounded-2xl px-5 py-4 mb-6 text-left">
+        <p className="text-xs font-bold text-green-700 uppercase tracking-wide mb-3">Potensi penghematan vs {platform}</p>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-gray-500">Fee {platform} ({Math.round(feeRate * 100)}%)</span>
+          <span className="text-sm font-bold text-red-500">-{formatRp(Math.round(DEMO_GMV * feeRate * 12))}/thn</span>
+        </div>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs text-gray-500">Fee AstraToko (2.5%)</span>
+          <span className="text-sm font-bold text-app-blue">-{formatRp(Math.round(DEMO_GMV * 0.025 * 12))}/thn</span>
+        </div>
+        <div className="border-t border-green-100 pt-3">
+          <p className="text-[10px] text-green-600 font-medium mb-0.5">Hemat per tahun (asumsi GMV Rp10jt/bln)</p>
+          <p className="text-3xl font-extrabold text-green-700 tracking-tight">+{formatRp(animated)}</p>
+        </div>
+      </div>
+
+      <button onClick={onNext}
+        className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 text-base transition-colors mb-3"
+      >
+        Lanjut Setup Toko <ArrowRight size={18} />
+      </button>
+      <button onClick={onNext} className="text-sm text-gray-400 hover:text-gray-600 py-2 transition-colors">
+        Lewati
+      </button>
+    </div>
+  )
+}
 
 function StepImport({ onNext }: { onNext: (platform: string, hasImport: boolean) => void }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -318,30 +396,8 @@ function StepImport({ onNext }: { onNext: (platform: string, hasImport: boolean)
         </div>
       )
     }
-    // Marketplace: celebratory confirmation before building
-    return (
-      <div className="px-6 pb-10 animate-fadein pt-8 flex flex-col items-center text-center">
-        <div className="text-6xl mb-5">🎉</div>
-        <h2 className="text-[28px] font-extrabold text-gray-900 leading-tight mb-1.5">
-          Katalog kamu<br />siap diimpor!
-        </h2>
-        <p className="text-sm text-gray-500 mb-8">dari {selected.platform}</p>
-
-        <div className="grid grid-cols-2 gap-2 w-full mb-8">
-          {['Produk ✓', 'Harga ✓', 'Stok ✓', 'Kategori ✓'].map((item) => (
-            <div key={item} className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm font-semibold text-gray-700 text-center">
-              {item}
-            </div>
-          ))}
-        </div>
-
-        <button onClick={() => onNext(selected.platform, true)}
-          className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 text-base transition-colors"
-        >
-          Lanjut Setup Toko <ArrowRight size={18} />
-        </button>
-      </div>
-    )
+    // Marketplace: celebratory confirmation + savings reveal before building
+    return <SavingsReveal platform={selected.platform} onNext={() => onNext(selected.platform, true)} />
   }
 
   return (
