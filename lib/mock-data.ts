@@ -15,19 +15,21 @@ export const SELLER = {
   savings: 2_300_000,
 }
 
+const U = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=400&h=300&q=80`
+
 export const PRODUCTS = [
-  { id: '1',  name: 'Brake Pad XYZ Motor',         price: 85_000,  stock: 24, category: 'Rem',       image_url: 'https://picsum.photos/seed/brake-pad-xyz/400/300' },
-  { id: '2',  name: 'Oli Federal Matic 1L',         price: 52_000,  stock: 48, category: 'Oli',       image_url: 'https://picsum.photos/seed/oli-federal/400/300' },
-  { id: '3',  name: 'Helm Half Face SNI Merah',     price: 185_000, stock: 12, category: 'Helm',      image_url: 'https://picsum.photos/seed/helm-sni/400/300' },
-  { id: '4',  name: 'Filter Udara Honda Beat',      price: 45_000,  stock: 36, category: 'Filter',    image_url: 'https://picsum.photos/seed/filter-honda/400/300' },
-  { id: '5',  name: 'Kampas Rem Depan Yamaha',      price: 38_000,  stock: 30, category: 'Rem',       image_url: 'https://picsum.photos/seed/kampas-yamaha/400/300' },
-  { id: '6',  name: 'Busi NGK Racing',              price: 28_000,  stock: 60, category: 'Mesin',     image_url: 'https://picsum.photos/seed/busi-ngk/400/300' },
-  { id: '7',  name: 'Rantai Motor RK 428',          price: 95_000,  stock: 18, category: 'Transmisi', image_url: 'https://picsum.photos/seed/rantai-rk/400/300' },
-  { id: '8',  name: 'Oli Gardan Matic 150ml',       price: 22_000,  stock: 72, category: 'Oli',       image_url: 'https://picsum.photos/seed/oli-gardan/400/300' },
-  { id: '9',  name: 'Spion Bulat Chrome Universal', price: 65_000,  stock: 20, category: 'Aksesoris', image_url: 'https://picsum.photos/seed/spion-chrome/400/300' },
-  { id: '10', name: 'Ban Dalam IRC 80/90-14',       price: 48_000,  stock: 15, category: 'Ban',       image_url: 'https://picsum.photos/seed/ban-irc/400/300' },
-  { id: '11', name: 'Kabel Gas Universal',          price: 32_000,  stock: 25, category: 'Mesin',     image_url: 'https://picsum.photos/seed/kabel-gas/400/300' },
-  { id: '12', name: 'Aki Yuasa YTZ5S',              price: 245_000, stock: 8,  category: 'Elektrik',  image_url: 'https://picsum.photos/seed/aki-yuasa/400/300' },
+  { id: '1',  name: 'Brake Pad XYZ Motor',         price: 85_000,  stock: 24, category: 'Rem',       image_url: U('1696494561430-de087dd0bd69') },
+  { id: '2',  name: 'Oli Federal Matic 1L',         price: 52_000,  stock: 48, category: 'Oli',       image_url: U('1771581136070-5322586211d6') },
+  { id: '3',  name: 'Helm Half Face SNI Merah',     price: 185_000, stock: 12, category: 'Helm',      image_url: U('1590506995460-d0d9892b54da') },
+  { id: '4',  name: 'Filter Udara Honda Beat',      price: 45_000,  stock: 36, category: 'Filter',    image_url: U('1486262715619-67b85e0b08d3') },
+  { id: '5',  name: 'Kampas Rem Depan Yamaha',      price: 38_000,  stock: 30, category: 'Rem',       image_url: U('1613214150384-14921ff659b2') },
+  { id: '6',  name: 'Busi NGK Racing',              price: 28_000,  stock: 60, category: 'Mesin',     image_url: U('1670764169470-bd2f737f9248') },
+  { id: '7',  name: 'Rantai Motor RK 428',          price: 95_000,  stock: 18, category: 'Transmisi', image_url: U('1620223200930-2e719f329f07') },
+  { id: '8',  name: 'Oli Gardan Matic 150ml',       price: 22_000,  stock: 72, category: 'Oli',       image_url: U('1635437536607-b8572f443763') },
+  { id: '9',  name: 'Spion Bulat Chrome Universal', price: 65_000,  stock: 20, category: 'Aksesoris', image_url: U('1778467325911-0198649519b7') },
+  { id: '10', name: 'Ban Dalam IRC 80/90-14',       price: 48_000,  stock: 15, category: 'Ban',       image_url: U('1761583780716-1553f9a70951') },
+  { id: '11', name: 'Kabel Gas Universal',          price: 32_000,  stock: 25, category: 'Mesin',     image_url: U('1671834214096-6aa88bd6470d') },
+  { id: '12', name: 'Aki Yuasa YTZ5S',              price: 245_000, stock: 8,  category: 'Elektrik',  image_url: U('1765211003026-f7666ea3a948') },
 ]
 
 export const RECENT_ORDERS = [

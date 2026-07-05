@@ -486,8 +486,10 @@ function HeroBanner({
   }, {})
   const topCategory = Object.entries(categoryCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
   const { color, Icon } = getCategoryStyle(topCategory)
-  const tagline = BANNER_TAGLINES[topCategory] ?? `Produk terpercaya\ndari ${seller.name}`
   const heroImage = seller.banner_image_url ?? products.find(p => p.image_url)?.image_url
+  const tagline = seller.banner_image_url
+    ? `Spare part motor original\nharga langsung dari bengkel`
+    : (BANNER_TAGLINES[topCategory] ?? `Produk terpercaya\ndari ${seller.name}`)
 
   return (
     <div
@@ -2353,11 +2355,11 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
                   const soldCount = DEMO_SOLD[product.id] ?? 5
                   return (
                     <div key={product.id}
-                      className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm animate-fadein cursor-pointer group"
+                      className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm animate-fadein cursor-pointer group flex flex-col"
                       style={{ animationDelay: `${index * 50}ms` }}
                       onClick={() => setPreviewProduct(product)}
                     >
-                      <div className="relative h-36 overflow-hidden transition-opacity group-hover:opacity-90" style={{ backgroundColor: color }}>
+                      <div className="relative h-36 flex-shrink-0 overflow-hidden transition-opacity group-hover:opacity-90" style={{ backgroundColor: color }}>
                         {product.image_url ? (
                           <img
                             src={product.image_url}
@@ -2382,8 +2384,8 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
                         </button>
                       </div>
                       <div className="p-3">
-                        <p className="text-sm font-semibold text-gray-900 leading-snug mb-0.5 line-clamp-2">{product.name}</p>
-                        <p className="text-[10px] text-gray-400 mb-1">{soldCount}x terjual</p>
+                        <p className="text-sm font-semibold text-gray-900 leading-snug mb-0.5 line-clamp-1">{product.name}</p>
+                        <p className="text-[10px] text-gray-400 mb-2">{soldCount}x terjual</p>
                         <p className="text-base font-extrabold text-app-blue tracking-tight mb-2.5">{formatRp(product.price)}</p>
                         <button onClick={(e) => { e.stopPropagation(); addToCart(product) }}
                           className="w-full bg-app-blue hover:bg-app-blue-light text-white text-xs font-bold py-2.5 rounded-xl transition-colors active:scale-[0.97] flex items-center justify-center gap-1"
