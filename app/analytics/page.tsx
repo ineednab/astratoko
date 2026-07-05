@@ -180,7 +180,7 @@ export default function AnalyticsPage() {
   const loyalList     = allCustomers.filter(c => tierOf(c) === 'Loyal')
   const repeatList    = allCustomers.filter(c => tierOf(c) === 'Kembali')
   const newCust       = allCustomers.filter(c => tierOf(c) === 'Baru')
-  const inactive      = allCustomers.filter(c => tierOf(c) === 'Dormant')
+  const inactive      = allCustomers.filter(c => tierOf(c) === 'Tidak Aktif')
   const topCustomer   = allCustomers.sort((a, b) => b.spend - a.spend)[0]
 
   const uniqueCustomers = new Set(paid.map(o => o.buyer_phone)).size
@@ -373,7 +373,7 @@ export default function AnalyticsPage() {
                       { label: 'Loyal (3+ order)',    count: loyalList.length,  color: '#7048E8', bg: 'bg-purple-50', icon: '💜' },
                       { label: 'Kembali (2 order)',   count: repeatList.length, color: '#1E40AF', bg: 'bg-blue-50',   icon: '🔁' },
                       { label: 'Pelanggan Baru',      count: newCust.length,    color: '#16A34A', bg: 'bg-green-50',  icon: '✨' },
-                      { label: 'Dormant >30 hari',    count: inactive.length,   color: '#6B7280', bg: 'bg-gray-100',  icon: '😴' },
+                      { label: 'Tidak Aktif >30 hari', count: inactive.length,   color: '#6B7280', bg: 'bg-gray-100',  icon: '😴' },
                     ].map(seg => (
                       <div key={seg.label} className="flex items-center gap-3">
                         <div className={`w-8 h-8 ${seg.bg} rounded-xl flex items-center justify-center text-sm flex-shrink-0`}>{seg.icon}</div>

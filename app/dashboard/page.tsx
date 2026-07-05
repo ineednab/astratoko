@@ -292,19 +292,19 @@ export default function DashboardPage() {
   })()
 
   // AI actions (all based on real data)
-  const aiActions: { icon: string; title: string; impact: string; color: string }[] = []
+  const aiActions: { icon: string; title: string; impact: string; color: string; href?: string; onClick?: () => void; cta: string }[] = []
   if (inactiveCustomers.length > 0) {
-    aiActions.push({ icon: '📲', title: `Kirim comeback promo ke ${inactiveCustomers.length} pelanggan yang tidak aktif`, impact: `+${Math.round(inactiveCustomers.length * 0.28)} perkiraan repeat buyer`, color: 'text-red-700 bg-red-50 border-red-100' })
+    aiActions.push({ icon: '📲', title: `Kirim comeback promo ke ${inactiveCustomers.length} pelanggan yang tidak aktif`, impact: `+${Math.round(inactiveCustomers.length * 0.28)} perkiraan repeat buyer`, color: 'text-red-700 bg-red-50 border-red-100', href: '/customers', cta: 'Lihat Pelanggan →' })
   } else if (custMap.size > 0 && repeatBuyers === 0) {
-    aiActions.push({ icon: '📲', title: `Kirim promo WhatsApp ke ${custMap.size} pelanggan lama`, impact: `+${Math.round(custMap.size * 0.28)} repeat customer`, color: 'text-green-700 bg-green-50 border-green-100' })
+    aiActions.push({ icon: '📲', title: `Kirim promo WhatsApp ke ${custMap.size} pelanggan lama`, impact: `+${Math.round(custMap.size * 0.28)} repeat customer`, color: 'text-green-700 bg-green-50 border-green-100', href: '/customers', cta: 'Lihat Pelanggan →' })
   }
   if (bestSeller) {
-    aiActions.push({ icon: '🔥', title: `Flash Sale "${bestSeller.name}" akhir pekan ini`, impact: `+${formatRpShort(Math.round(bestSeller.revenue * 0.4))} proyeksi pendapatan`, color: 'text-orange-700 bg-orange-50 border-orange-100' })
+    aiActions.push({ icon: '🔥', title: `Flash Sale "${bestSeller.name}" akhir pekan ini`, impact: `+${formatRpShort(Math.round(bestSeller.revenue * 0.4))} proyeksi pendapatan`, color: 'text-orange-700 bg-orange-50 border-orange-100', href: '/products', cta: 'Kelola Produk →' })
   }
   if (productRanking.length >= 2) {
-    aiActions.push({ icon: '📦', title: `Buat bundle "${productRanking[0]?.name} + ${productRanking[1]?.name}"`, impact: '+18% rata-rata nilai transaksi', color: 'text-purple-700 bg-purple-50 border-purple-100' })
+    aiActions.push({ icon: '📦', title: `Buat bundle "${productRanking[0]?.name} + ${productRanking[1]?.name}"`, impact: '+18% rata-rata nilai transaksi', color: 'text-purple-700 bg-purple-50 border-purple-100', href: '/products', cta: 'Kelola Produk →' })
   }
-  aiActions.push({ icon: '🔗', title: 'Bagikan link toko ke komunitas baru', impact: `+${newThisMonth.length > 0 ? Math.round(newThisMonth.length * 1.5) : 12} perkiraan pelanggan baru`, color: 'text-blue-700 bg-blue-50 border-blue-100' })
+  aiActions.push({ icon: '🔗', title: 'Bagikan link toko ke komunitas baru', impact: `+${newThisMonth.length > 0 ? Math.round(newThisMonth.length * 1.5) : 12} perkiraan pelanggan baru`, color: 'text-blue-700 bg-blue-50 border-blue-100', onClick: handleShare, cta: 'Bagikan via WhatsApp →' })
 
   // AI growth insights (customer-ownership focused)
   const aiInsights: { title: string; body: string; cta?: string }[] = []
@@ -624,7 +624,7 @@ export default function DashboardPage() {
               const loyalList    = allCustomers.filter(c => tierOf(c) === 'Loyal')
               const repeatList   = allCustomers.filter(c => tierOf(c) === 'Kembali')
               const newCustomers = allCustomers.filter(c => tierOf(c) === 'Baru')
-              const inactive     = allCustomers.filter(c => tierOf(c) === 'Dormant')
+              const inactive     = allCustomers.filter(c => tierOf(c) === 'Tidak Aktif')
               const topCustomer = allCustomers.sort((a, b) => b.totalSpend - a.totalSpend)[0]
               const avgDaysBetween = (() => {
                 const repeatOnes = allCustomers.filter(c => c.orderCount >= 2)
@@ -747,7 +747,7 @@ export default function DashboardPage() {
                         <p className="text-xs text-gray-400 mt-0.5">AstraToko melengkapi semua channel — bukan menggantikannya</p>
                       </div>
                     </div>
-                    <span className="text-[9px] font-bold bg-gray-100 text-gray-500 px-2 py-1 rounded-full">Ilustrasi</span>
+                    <span className="text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-200 px-2.5 py-1 rounded-full">📊 Data Ilustratif</span>
                   </div>
                   <div className="p-6">
                     {/* Bar chart */}
@@ -1021,12 +1021,20 @@ export default function DashboardPage() {
                       </div>
                       <p className="text-white font-extrabold text-base leading-snug mb-2">{top.title}</p>
                       <p className="text-orange-100 text-xs mb-4">Estimasi dampak: <span className="font-bold text-white">{top.impact}</span></p>
-                      <button
-                        onClick={() => showToast('✓ Aksi dikirim ke antrian')}
-                        className="bg-white text-orange-600 font-extrabold text-sm px-5 py-2.5 rounded-xl hover:bg-orange-50 transition-colors"
-                      >
-                        Jalankan Sekarang →
-                      </button>
+                      {top.href ? (
+                        <Link href={top.href}
+                          className="inline-block bg-white text-orange-600 font-extrabold text-sm px-5 py-2.5 rounded-xl hover:bg-orange-50 transition-colors"
+                        >
+                          {top.cta}
+                        </Link>
+                      ) : (
+                        <button
+                          onClick={top.onClick}
+                          className="bg-white text-orange-600 font-extrabold text-sm px-5 py-2.5 rounded-xl hover:bg-orange-50 transition-colors"
+                        >
+                          {top.cta}
+                        </button>
+                      )}
                     </div>
                     <div className="hidden md:flex flex-col items-end gap-2 flex-shrink-0">
                       {aiActions.slice(1, 3).map((a, i) => (

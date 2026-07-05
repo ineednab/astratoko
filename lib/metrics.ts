@@ -10,7 +10,7 @@ export function sumRevenue(orders: Pick<Order, 'price' | 'total_price'>[]): numb
   return orders.reduce((s, o) => s + orderAmount(o), 0)
 }
 
-export type CustomerTierLabel = 'VIP' | 'Loyal' | 'Kembali' | 'Dormant' | 'Baru'
+export type CustomerTierLabel = 'VIP' | 'Loyal' | 'Kembali' | 'Tidak Aktif' | 'Baru'
 
 export type CustomerTier = {
   label: CustomerTierLabel
@@ -37,7 +37,7 @@ export function customerTier({
   if (orderCount >= 5 || totalSpend >= 500_000)
     return { label: 'VIP', cls: 'bg-amber-50 text-amber-700 border border-amber-200', icon: '⭐' }
   if (lastOrderTime && daysSince > 30 && orderCount >= 2)
-    return { label: 'Dormant', cls: 'bg-gray-100 text-gray-500 border border-gray-200', icon: '💤' }
+    return { label: 'Tidak Aktif', cls: 'bg-gray-100 text-gray-500 border border-gray-200', icon: '💤' }
   if (orderCount >= 3)
     return { label: 'Loyal', cls: 'bg-purple-50 text-purple-700 border border-purple-200', icon: '💜' }
   if (orderCount >= 2)

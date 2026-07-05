@@ -119,7 +119,7 @@ export default function CustomersPage() {
       (filter === 'kembali' && c.badge.label === 'Kembali') ||
       (filter === 'loyal'   && c.badge.label === 'Loyal')   ||
       (filter === 'vip'     && c.badge.label === 'VIP')     ||
-      (filter === 'dormant' && c.badge.label === 'Dormant')
+      (filter === 'dormant' && c.badge.label === 'Tidak Aktif')
     return matchSearch && matchFilter
   })
 
@@ -206,7 +206,7 @@ export default function CustomersPage() {
                     { key: 'kembali', label: 'Kembali' },
                     { key: 'loyal',   label: 'Loyal' },
                     { key: 'vip',     label: 'VIP' },
-                    { key: 'dormant', label: 'Dormant' },
+                    { key: 'dormant', label: 'Tidak Aktif' },
                   ] as const).map(f => (
                     <button key={f.key} onClick={() => setFilter(f.key)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
