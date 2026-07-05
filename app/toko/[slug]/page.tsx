@@ -492,7 +492,8 @@ function CheckoutModal({
   const [astraPayError,      setAstraPayError]      = useState<string | null>(null)
   const [astraPayBindingUrl, setAstraPayBindingUrl] = useState<string | null>(null)
   const [bindingTabOpened,   setBindingTabOpened]   = useState(false)
-  const fallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fallbackRef       = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const startPaymentRef   = useRef<((token?: string) => void) | null>(null)
   const confirmingRef = useRef(false)
   const pollRef       = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -638,6 +639,7 @@ function CheckoutModal({
           }
         })
     }
+    startPaymentRef.current = startPayment
 
     const pollBindingUntilLinked = (phone: string) => {
       // Poll DB for token (works if server callback is configured)
@@ -1167,7 +1169,7 @@ function CheckoutModal({
                           if (pollRef.current) clearInterval(pollRef.current)
                           if (fallbackRef.current) clearTimeout(fallbackRef.current)
                           setAstraPayBindingUrl(null)
-                          startPayment()
+                          startPaymentRef.current?.()
                         }}
                         className="w-full bg-green-500 hover:bg-green-400 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm"
                       >

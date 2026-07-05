@@ -10,12 +10,8 @@ export default function AstraPayLinkedPage() {
     async function handleCallback() {
       const params = new URLSearchParams(window.location.search)
 
-      // Log semua query params untuk debugging
-      console.log('[AstraPay Linked] query params:', Object.fromEntries(params.entries()))
-
       const signature      = params.get('signature')      ?? params.get('token')        ?? params.get('authCode')
       const merchantUserId = params.get('merchantUserId') ?? params.get('merchant_user_id') ?? params.get('phoneNo') ?? params.get('phone')
-      const referenceNo    = params.get('referenceNo')    ?? params.get('reference_no')
 
       if (signature && merchantUserId) {
         const { error } = await supabase
@@ -27,16 +23,14 @@ export default function AstraPayLinkedPage() {
           }, { onConflict: 'merchant_user_id' })
 
         if (error) {
-          console.error('[AstraPay Linked] upsert error:', error)
+          console.error('[AstraPay Linked] failed to save link')
           setStatus('error')
         } else {
-          console.log('[AstraPay Linked] saved signature for', merchantUserId)
           setStatus('done')
         }
       } else {
-        // Tidak ada signature di URL — mungkin AstraPay pakai server callback
-        // Tetap anggap sukses, biarkan polling di storefront yang verify
-        console.log('[AstraPay Linked] no signature in URL, assuming server callback')
+        // No signature in URL: AstraPay likely used a server callback.
+        // Treat as success and let the storefront polling verify.
         setStatus('done')
       }
 
