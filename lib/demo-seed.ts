@@ -48,8 +48,17 @@ export async function ensureDemoSeller() {
         price: p.price,
         stock: p.stock,
         category: p.category,
+        image_url: p.image_url,
       })),
     )
+  } else {
+    // Patch image_url for existing products that have a matching name
+    for (const p of PRODUCTS) {
+      await supabase.from('products')
+        .update({ image_url: p.image_url })
+        .eq('seller_id', seller.id)
+        .eq('name', p.name)
+    }
   }
 
   return seller

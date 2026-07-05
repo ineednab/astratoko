@@ -2357,20 +2357,19 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
                       style={{ animationDelay: `${index * 50}ms` }}
                       onClick={() => setPreviewProduct(product)}
                     >
-                      <div className="relative overflow-hidden transition-opacity group-hover:opacity-90" style={{ backgroundColor: color }}>
+                      <div className="relative h-36 overflow-hidden transition-opacity group-hover:opacity-90" style={{ backgroundColor: color }}>
                         {product.image_url ? (
                           <img
                             src={product.image_url}
                             alt={product.name}
-                            className="w-full h-36 object-cover transition-transform group-hover:scale-105 duration-300"
+                            className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105 duration-300"
                             onError={(e) => {
-                              const target = e.currentTarget
-                              target.style.display = 'none'
-                              target.nextElementSibling?.classList.remove('hidden')
+                              e.currentTarget.style.display = 'none'
+                              e.currentTarget.nextElementSibling?.classList.remove('hidden')
                             }}
                           />
                         ) : null}
-                        <div className={`flex items-center justify-center py-7 ${product.image_url ? 'hidden' : ''}`}>
+                        <div className={`absolute inset-0 flex items-center justify-center ${product.image_url ? 'hidden' : ''}`}>
                           <Icon size={40} className="text-white transition-transform group-hover:scale-110 duration-200" />
                         </div>
                         {isBestSeller && (

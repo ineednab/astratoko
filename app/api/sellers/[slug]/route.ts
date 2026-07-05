@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { ensureDemoSeller } from '@/lib/demo-seed'
 
 export async function PATCH(
   req: Request,
@@ -28,6 +29,8 @@ export async function GET(
   _req: Request,
   { params }: { params: { slug: string } },
 ) {
+  if (params.slug === 'tokorizky') await ensureDemoSeller()
+
   const { data: seller, error: sellerError } = await supabase
     .from('sellers')
     .select()
