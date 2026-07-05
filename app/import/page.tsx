@@ -179,7 +179,7 @@ function ResultsScreen({
   )
 }
 
-function ReviewScreen({ products, onNext }: { products: ParsedProduct[]; onNext: () => void }) {
+function ReviewScreen({ products, onNext, submitting }: { products: ParsedProduct[]; onNext: () => void; submitting: boolean }) {
   const { marketplace, astratoko, savings } = computeSavings(products)
   const categories = new Set(products.map((p) => p.category).filter(Boolean))
   const hasPrices = products.some((p) => p.price > 0)
@@ -267,9 +267,17 @@ function ReviewScreen({ products, onNext }: { products: ParsedProduct[]; onNext:
 
       <button
         onClick={onNext}
-        className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-base mb-3"
+        disabled={submitting}
+        className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-base mb-3 disabled:opacity-60"
       >
-        Lanjut Migrasi <ArrowRight size={18} />
+        {submitting ? (
+          <>
+            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            Menyimpan produk...
+          </>
+        ) : (
+          <>Lanjut Migrasi <ArrowRight size={18} /></>
+        )}
       </button>
 
       <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400">
@@ -286,6 +294,7 @@ export default function ImportPage() {
   const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string } | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [parsedProducts, setParsedProducts] = useState<ParsedProduct[]>([])
+  const [submitting, setSubmitting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFile = useCallback((file: File) => {
@@ -329,6 +338,33 @@ export default function ImportPage() {
   }
 
   const displayProducts = parsedProducts.length > 0 ? parsedProducts : DEMO_FALLBACK
+
+  const handleMigrate = useCallback(async () => {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('pending_products', JSON.stringify(displayProducts))
+    }
+    const slug =
+      typeof localStorage !== 'undefined' ? localStorage.getItem('seller_slug') : null
+
+    // No store yet: hand off to onboarding, which consumes pending_products.
+    if (!slug) {
+      router.push('/mulai')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      await fetch('/api/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seller_slug: slug, products: displayProducts }),
+      })
+      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('pending_products')
+    } catch {
+      /* still navigate; products stay in sessionStorage for retry via onboarding */
+    }
+    router.push('/products')
+  }, [displayProducts, router])
 
   return (
     <div className="min-h-screen bg-white max-w-md mx-auto">
@@ -479,7 +515,8 @@ export default function ImportPage() {
         {step === 'review' && (
           <ReviewScreen
             products={displayProducts}
-            onNext={() => router.push('/dashboard')}
+            onNext={handleMigrate}
+            submitting={submitting}
           />
         )}
       </div>

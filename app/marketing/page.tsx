@@ -11,7 +11,7 @@ export default function MarketingPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [orders,   setOrders]   = useState<Order[]>([])
   useEffect(() => {
-    const slug = (typeof localStorage !== 'undefined' && localStorage.getItem('seller_slug')) || 'toko-rizky'
+    const slug = (typeof localStorage !== 'undefined' && localStorage.getItem('seller_slug')) || '__no_seller__'
     Promise.all([
       fetch(`/api/sellers/${slug}`).then(r => r.json()),
       fetch(`/api/orders?slug=${slug}`).then(r => r.json()),

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { ChevronRight, Share2, MessageCircle, Gift, Search } from 'lucide-react'
 import { formatRp } from '@/lib/utils'
+import { customerTier, orderAmount, type CustomerTier } from '@/lib/metrics'
 import { Sidebar } from '@/components/Sidebar'
 import type { Seller, Order, Product } from '@/lib/types'
 
@@ -14,7 +15,7 @@ interface DerivedCustomer {
   orderCount: number; totalSpend: number
   lastOrderTime: string; lastProduct: string
   points: number; initial: string
-  badge: { label: string; cls: string }
+  badge: CustomerTier
 }
 
 const AVATAR_COLORS = ['#3B5BDB','#2F9E44','#F08C00','#E03131','#7048E8','#1098AD','#D6336C','#0C8599']
@@ -27,15 +28,6 @@ function relativeTime(iso: string) {
   const h = Math.floor(m / 60)
   if (h < 24) return `${h} jam lalu`
   return `${Math.floor(h / 24)} hr lalu`
-}
-
-function getBadge(orderCount: number, totalSpend: number, lastOrderTime: string) {
-  const daysSince = (Date.now() - new Date(lastOrderTime).getTime()) / 86_400_000
-  if (orderCount >= 5 || totalSpend >= 500_000) return { label: 'VIP',     cls: 'bg-amber-50 text-amber-700 border border-amber-200' }
-  if (daysSince > 30 && orderCount >= 2)         return { label: 'Dormant', cls: 'bg-gray-100 text-gray-500 border border-gray-200' }
-  if (orderCount >= 3)                            return { label: 'Loyal',   cls: 'bg-purple-50 text-purple-700 border border-purple-200' }
-  if (orderCount >= 2)                            return { label: 'Kembali', cls: 'bg-blue-50 text-blue-700 border border-blue-200' }
-  return                                                 { label: 'Baru',    cls: 'bg-green-50 text-green-700 border border-green-200' }
 }
 
 function Toast({ message }: { message: string }) {
@@ -75,7 +67,7 @@ export default function CustomersPage() {
   }, [])
 
   useEffect(() => {
-    const slug = (typeof localStorage !== 'undefined' && localStorage.getItem('seller_slug')) || 'toko-rizky'
+    const slug = (typeof localStorage !== 'undefined' && localStorage.getItem('seller_slug')) || '__no_seller__'
     Promise.all([
       fetch(`/api/sellers/${slug}`).then(r => r.json()),
       fetch(`/api/orders?slug=${slug}`).then(r => r.json()),
@@ -94,23 +86,24 @@ export default function CustomersPage() {
     const c = customerMap.get(order.buyer_phone)
     if (c) {
       c.orderCount++
-      c.totalSpend += order.price
+      c.totalSpend += orderAmount(order)
       if (new Date(order.created_at) > new Date(c.lastOrderTime)) {
         c.lastOrderTime = order.created_at
         c.lastProduct   = order.product_name
       }
       c.points = c.orderCount * 50
-      c.badge  = getBadge(c.orderCount, c.totalSpend, c.lastOrderTime)
+      c.badge  = customerTier({ orderCount: c.orderCount, totalSpend: c.totalSpend, lastOrderTime: c.lastOrderTime })
     } else {
       const ph   = order.buyer_phone
       const name = order.buyer_name || 'Pembeli'
+      const spend = orderAmount(order)
       customerMap.set(ph, {
         name, phone: ph,
         maskedPhone: ph.length >= 8 ? ph.slice(0, 4) + '****' + ph.slice(-4) : ph,
-        orderCount: 1, totalSpend: order.price,
+        orderCount: 1, totalSpend: spend,
         lastOrderTime: order.created_at, lastProduct: order.product_name,
         points: 50, initial: name.charAt(0).toUpperCase(),
-        badge: getBadge(1, order.price, order.created_at),
+        badge: customerTier({ orderCount: 1, totalSpend: spend, lastOrderTime: order.created_at }),
       })
     }
   })
@@ -285,18 +278,16 @@ export default function CustomersPage() {
                       <div key={customer.phone}
                         className="grid grid-cols-[40px_200px_110px_1fr_120px_120px_80px_100px_92px] gap-3 items-center px-6 py-4 hover:bg-gray-50/50 transition-colors group"
                       >
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-white font-extrabold text-sm" style={{ backgroundColor: bgColor }}>
+                        <a href={`/customers/${encodeURIComponent(customer.phone)}`}
+                          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-white font-extrabold text-sm hover:ring-2 hover:ring-app-blue hover:ring-offset-1 transition-all" style={{ backgroundColor: bgColor }}>
                           {customer.initial}
-                        </div>
+                        </a>
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 truncate">{customer.name}</p>
+                          <a href={`/customers/${encodeURIComponent(customer.phone)}`} className="text-sm font-semibold text-gray-900 truncate hover:text-app-blue transition-colors block">{customer.name}</a>
                           <p className="text-xs text-gray-400 mt-0.5">{customer.maskedPhone}</p>
                         </div>
                         <span className={`text-[10px] font-bold px-2 py-1 rounded-lg leading-none w-fit ${customer.badge.cls}`}>
-                          {customer.badge.label === 'VIP'     ? '⭐ VIP'      :
-                           customer.badge.label === 'Loyal'   ? '💜 Loyal'    :
-                           customer.badge.label === 'Kembali' ? '🔁 Kembali'  :
-                           customer.badge.label === 'Dormant' ? '💤 Dormant'  : '✨ Baru'}
+                          {customer.badge.icon} {customer.badge.label}
                         </span>
                         <p className="text-sm text-gray-600 truncate">{customer.lastProduct}</p>
                         <p className="text-sm font-bold text-gray-900">{customer.orderCount}× pesanan</p>

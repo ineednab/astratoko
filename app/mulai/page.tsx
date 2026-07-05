@@ -431,13 +431,22 @@ function StepBuilding({
         if (seller?.slug && !cancelled) {
           slugRef.current = seller.slug
           if (typeof localStorage !== 'undefined') localStorage.setItem('seller_slug', seller.slug)
+
+          // Use CSV products from the import flow if present, else the demo catalog.
+          let importProducts = PRODUCTS.map((p) => ({ name: p.name, price: p.price, stock: p.stock, category: p.category }))
+          try {
+            const pending = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pending_products') : null
+            if (pending) {
+              const parsed = JSON.parse(pending)
+              if (Array.isArray(parsed) && parsed.length > 0) importProducts = parsed
+              sessionStorage.removeItem('pending_products')
+            }
+          } catch { /* fall back to demo catalog */ }
+
           fetch('/api/import', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              seller_slug: seller.slug,
-              products: PRODUCTS.map((p) => ({ name: p.name, price: p.price, stock: p.stock, category: p.category })),
-            }),
+            body: JSON.stringify({ seller_slug: seller.slug, products: importProducts }),
           }).catch(() => {})
         }
       } catch { /* use fallback slug */ }

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { ChevronRight, ShoppingBag } from 'lucide-react'
 import { formatRp } from '@/lib/utils'
+import { orderAmount } from '@/lib/metrics'
 import { getCategoryStyle } from '@/lib/categories'
 import { supabase } from '@/lib/supabase'
 import { Sidebar } from '@/components/Sidebar'
@@ -47,7 +48,7 @@ export default function OrdersPage() {
   const sellerIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    const slug = (typeof localStorage !== 'undefined' && localStorage.getItem('seller_slug')) || 'toko-rizky'
+    const slug = (typeof localStorage !== 'undefined' && localStorage.getItem('seller_slug')) || '__no_seller__'
     Promise.all([
       fetch(`/api/sellers/${slug}`).then(r => r.json()),
       fetch(`/api/orders?slug=${slug}`).then(r => r.json()),
@@ -77,7 +78,7 @@ export default function OrdersPage() {
 
   const paidCount     = orders.filter(o => o.status === 'paid').length
   const pendingCount  = orders.filter(o => o.status === 'pending').length
-  const gmv           = orders.filter(o => o.status === 'paid').reduce((s, o) => s + o.price, 0)
+  const gmv           = orders.filter(o => o.status === 'paid').reduce((s, o) => s + orderAmount(o), 0)
 
   const uniqueCustomers = new Set(
     orders.filter(o => o.status === 'paid').map(o => o.buyer_phone)

@@ -16,26 +16,46 @@ function Toast({ message }: { message: string }) {
 }
 
 export default function SettingsPage() {
-  const [seller,   setSeller]   = useState<Seller | null>(null)
-  const [products, setProducts] = useState<Product[]>([])
-  const [orders,   setOrders]   = useState<Order[]>([])
-  const [toast,    setToast]    = useState('')
+  const [seller,      setSeller]      = useState<Seller | null>(null)
+  const [products,    setProducts]    = useState<Product[]>([])
+  const [orders,      setOrders]      = useState<Order[]>([])
+  const [toast,       setToast]       = useState('')
+  const [bannerUrl,   setBannerUrl]   = useState('')
+  const [savingBanner, setSavingBanner] = useState(false)
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2500) }
 
   useEffect(() => {
-    const slug = (typeof localStorage !== 'undefined' && localStorage.getItem('seller_slug')) || 'toko-rizky'
+    const slug = (typeof localStorage !== 'undefined' && localStorage.getItem('seller_slug')) || '__no_seller__'
     Promise.all([
       fetch(`/api/sellers/${slug}`).then(r => r.json()),
       fetch(`/api/orders?slug=${slug}`).then(r => r.json()),
     ]).then(([s, o]) => {
-      if (s.seller)   setSeller(s.seller)
+      if (s.seller)   { setSeller(s.seller); setBannerUrl(s.seller.banner_image_url ?? '') }
       if (s.products) setProducts(s.products)
       setOrders(o.orders ?? [])
     })
   }, [])
 
   const uniqueCustomers = new Set(orders.filter(o => o.status === 'paid').map(o => o.buyer_phone)).size
+
+  async function saveBannerUrl() {
+    if (!seller) return
+    setSavingBanner(true)
+    const res = await fetch(`/api/sellers/${seller.slug}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ banner_image_url: bannerUrl.trim() || null }),
+    })
+    setSavingBanner(false)
+    if (res.ok) {
+      const { seller: updated } = await res.json()
+      setSeller(updated)
+      showToast('Gambar banner tersimpan ✓')
+    } else {
+      showToast('Gagal menyimpan, coba lagi')
+    }
+  }
 
   const storeUrl = seller ? `${typeof window !== 'undefined' ? window.location.origin : ''}/toko/${seller.slug}` : ''
 
@@ -105,6 +125,40 @@ export default function SettingsPage() {
                       <ExternalLink size={14} /> Buka
                     </Link>
                   </div>
+                </div>
+              </div>
+
+              {/* Banner Toko */}
+              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-50">
+                  <h3 className="font-extrabold text-gray-900">Banner Toko</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Gambar produk/brand yang tampil di banner storefront</p>
+                </div>
+                <div className="px-6 py-5 space-y-3">
+                  {seller.banner_image_url && (
+                    <div className="rounded-xl overflow-hidden border border-gray-100 h-24 bg-gradient-to-r from-[#0f1c40] to-[#1E3A8A] flex items-center justify-end pr-2">
+                      <img src={seller.banner_image_url} alt="Banner preview" className="h-full w-auto object-contain" />
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      placeholder="https://... (URL gambar PNG/JPG)"
+                      value={bannerUrl}
+                      onChange={e => setBannerUrl(e.target.value)}
+                      className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-app-blue/20 focus:border-app-blue transition-colors"
+                    />
+                    <button
+                      onClick={saveBannerUrl}
+                      disabled={savingBanner}
+                      className="px-4 py-2.5 bg-app-blue hover:bg-app-blue-light text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
+                    >
+                      {savingBanner ? 'Menyimpan...' : 'Simpan'}
+                    </button>
+                  </div>
+                  {bannerUrl && bannerUrl !== seller.banner_image_url && (
+                    <p className="text-xs text-amber-600">Perubahan belum disimpan</p>
+                  )}
                 </div>
               </div>
 
