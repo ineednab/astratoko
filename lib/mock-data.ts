@@ -1,7 +1,7 @@
 export const SELLER = {
   id: '1',
   name: 'Toko Rizky',
-  slug: 'toko-rizky',
+  slug: 'tokorizky',
   initial: 'R',
   location: 'Bandung',
   platform: 'Tokopedia',

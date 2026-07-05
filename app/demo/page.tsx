@@ -325,7 +325,7 @@ export default function DemoPage() {
 
           {/* CTA */}
           <Link
-            href="/toko/toko-rizky?demo=true"
+            href="/toko/tokorizky?demo=true"
             className="btn-primary inline-flex items-center gap-3 text-base px-8 py-4"
           >
             ▶ Rasakan Sekarang <ArrowRight size={18} />

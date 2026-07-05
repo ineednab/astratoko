@@ -7,7 +7,7 @@ export async function ensureDemoSeller() {
     .upsert(
       {
         name: 'Toko Rizky',
-        slug: 'toko-rizky',
+        slug: 'tokorizky',
         initial: 'R',
         location: 'Bandung',
         whatsapp: '081234567890',

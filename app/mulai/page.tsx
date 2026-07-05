@@ -413,7 +413,7 @@ function StepBuilding({
       ))
     })
 
-    const fallbackSlug = toSlug(data.storeName) || 'toko-rizky'
+    const fallbackSlug = toSlug(data.storeName) || 'tokorizky'
     const slugRef = { current: fallbackSlug }
     let cancelled = false
 
