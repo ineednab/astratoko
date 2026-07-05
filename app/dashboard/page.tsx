@@ -875,9 +875,9 @@ export default function DashboardPage() {
                         : 'Pelanggan setia muncul setelah ada pembelian kedua.'}
                     </p>
                     {custMap.size > 0 && (
-                      <button className="flex items-center gap-1.5 text-xs font-semibold text-white bg-[#25D366] hover:bg-[#1db954] px-4 py-2 rounded-xl transition-colors">
+                      <Link href="/customers" className="flex items-center gap-1.5 text-xs font-semibold text-white bg-[#25D366] hover:bg-[#1db954] px-4 py-2 rounded-xl transition-colors">
                         <MessageCircle size={12} /> Kirim Promo
-                      </button>
+                      </Link>
                     )}
                   </div>
                 ) : (

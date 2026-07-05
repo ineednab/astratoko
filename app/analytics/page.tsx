@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { Sidebar } from '@/components/Sidebar'
 import { formatRp, formatRpShort } from '@/lib/utils'
-import { orderAmount } from '@/lib/metrics'
+import { orderAmount, customerTier } from '@/lib/metrics'
 import type { Seller, Product, Order } from '@/lib/types'
 
 type Period = '30d' | 'month' | 'all'
@@ -124,8 +124,14 @@ export default function AnalyticsPage() {
   const prevAov  = prevRange.length > 0 ? Math.round(prevGmv / prevRange.length) : 0
   const aovDelta = prevAov > 0 ? Math.round(((aov - prevAov) / prevAov) * 100) : 0
 
-  // Daily revenue chart (last N days or this month)
-  const chartDays = period === 'all' ? 30 : (period === '30d' ? 30 : new Date().getDate())
+  // Daily revenue chart (last N days, this month, or the full span for "all")
+  const earliestPaidMs = paid.length
+    ? Math.min(...paid.map(o => new Date(o.created_at).getTime()))
+    : Date.now()
+  const allSpanDays = Math.ceil((Date.now() - earliestPaidMs) / (24 * 60 * 60 * 1000)) + 1
+  const chartDays = period === 'all'
+    ? Math.min(Math.max(allSpanDays, 7), 90)
+    : (period === '30d' ? 30 : new Date().getDate())
   const chartData = Array.from({ length: chartDays }, (_, i) => {
     const d   = new Date()
     d.setDate(d.getDate() - (chartDays - 1 - i))
@@ -161,8 +167,6 @@ export default function AnalyticsPage() {
   const maxCatRev   = catRanking[0]?.[1].revenue ?? 1
 
   // Customer segments
-  const nowMs       = Date.now()
-  const thirtyMs    = 30 * 24 * 60 * 60 * 1000
   const allCustMap  = new Map<string, { name: string; orders: number; spend: number; last: string }>()
   paid.forEach(o => {
     const c = allCustMap.get(o.buyer_phone)
@@ -170,10 +174,13 @@ export default function AnalyticsPage() {
     else allCustMap.set(o.buyer_phone, { name: o.buyer_name || 'Pembeli', orders: 1, spend: orderAmount(o), last: o.created_at })
   })
   const allCustomers  = Array.from(allCustMap.values())
-  const vip           = allCustomers.filter(c => c.orders >= 3)
-  const repeatList    = allCustomers.filter(c => c.orders === 2)
-  const newCust       = allCustomers.filter(c => c.orders === 1 && (nowMs - new Date(c.last).getTime()) <= thirtyMs)
-  const inactive      = allCustomers.filter(c => (nowMs - new Date(c.last).getTime()) > thirtyMs)
+  const tierOf = (c: { orders: number; spend: number; last: string }) =>
+    customerTier({ orderCount: c.orders, totalSpend: c.spend, lastOrderTime: c.last }).label
+  const vip           = allCustomers.filter(c => tierOf(c) === 'VIP')
+  const loyalList     = allCustomers.filter(c => tierOf(c) === 'Loyal')
+  const repeatList    = allCustomers.filter(c => tierOf(c) === 'Kembali')
+  const newCust       = allCustomers.filter(c => tierOf(c) === 'Baru')
+  const inactive      = allCustomers.filter(c => tierOf(c) === 'Dormant')
   const topCustomer   = allCustomers.sort((a, b) => b.spend - a.spend)[0]
 
   const uniqueCustomers = new Set(paid.map(o => o.buyer_phone)).size
@@ -362,10 +369,11 @@ export default function AnalyticsPage() {
                   </div>
                   <div className="p-6 space-y-3">
                     {[
-                      { label: 'VIP (3+ order)',     count: vip.length,      color: '#F59E0B', bg: 'bg-amber-50',  icon: '⭐' },
-                      { label: 'Repeat Buyer',        count: repeatList.length, color: '#7048E8', bg: 'bg-purple-50', icon: '🔁' },
-                      { label: 'Pelanggan Baru',      count: newCust.length,  color: '#1E3A8A', bg: 'bg-blue-50',   icon: '✨' },
-                      { label: 'Tidak Aktif >30 hr', count: inactive.length, color: '#EF4444', bg: 'bg-red-50',    icon: '😴' },
+                      { label: 'VIP (5+ / Rp500rb)', count: vip.length,        color: '#F59E0B', bg: 'bg-amber-50',  icon: '⭐' },
+                      { label: 'Loyal (3+ order)',    count: loyalList.length,  color: '#7048E8', bg: 'bg-purple-50', icon: '💜' },
+                      { label: 'Kembali (2 order)',   count: repeatList.length, color: '#1E40AF', bg: 'bg-blue-50',   icon: '🔁' },
+                      { label: 'Pelanggan Baru',      count: newCust.length,    color: '#16A34A', bg: 'bg-green-50',  icon: '✨' },
+                      { label: 'Dormant >30 hari',    count: inactive.length,   color: '#6B7280', bg: 'bg-gray-100',  icon: '😴' },
                     ].map(seg => (
                       <div key={seg.label} className="flex items-center gap-3">
                         <div className={`w-8 h-8 ${seg.bg} rounded-xl flex items-center justify-center text-sm flex-shrink-0`}>{seg.icon}</div>

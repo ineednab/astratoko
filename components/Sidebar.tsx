@@ -19,9 +19,9 @@ const NAV_ITEMS = [
   { id: 'orders',     label: 'Orders',      Icon: ShoppingBag,      href: '/orders',     soon: false },
   { id: 'customers',  label: 'Customers',   Icon: Users,            href: '/customers',  soon: false },
   { id: 'loyalty',    label: 'Loyalty',     Icon: Star,             href: '/loyalty',    soon: false },
+  { id: 'analytics',  label: 'Analytics',   Icon: BarChart3,        href: '/analytics',  soon: false },
+  { id: 'settings',   label: 'Settings',    Icon: Settings,         href: '/settings',   soon: false },
   { id: 'marketing',  label: 'Marketing',   Icon: Megaphone,        href: '/marketing',  soon: true  },
-  { id: 'analytics',  label: 'Analytics',   Icon: BarChart3,        href: '/analytics',  soon: true  },
-  { id: 'settings',   label: 'Settings',    Icon: Settings,         href: '/settings',   soon: true  },
 ] as const
 
 export function Sidebar({

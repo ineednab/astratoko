@@ -8,7 +8,7 @@ import { customerTier, orderAmount, type CustomerTier } from '@/lib/metrics'
 import { Sidebar } from '@/components/Sidebar'
 import type { Seller, Order, Product } from '@/lib/types'
 
-type CustFilter = 'all' | 'baru' | 'kembali' | 'loyal' | 'vip'
+type CustFilter = 'all' | 'baru' | 'kembali' | 'loyal' | 'vip' | 'dormant'
 
 interface DerivedCustomer {
   name: string; phone: string; maskedPhone: string
@@ -80,9 +80,9 @@ export default function CustomersPage() {
 
   if (loading) return <Skeleton />
 
-  // Derive customers
+  // Derive customers (paid orders only, consistent with customer detail + CRM)
   const customerMap = new Map<string, DerivedCustomer>()
-  orders.forEach(order => {
+  orders.filter(order => order.status === 'paid').forEach(order => {
     const c = customerMap.get(order.buyer_phone)
     if (c) {
       c.orderCount++
@@ -118,7 +118,8 @@ export default function CustomersPage() {
       (filter === 'baru'    && c.badge.label === 'Baru')    ||
       (filter === 'kembali' && c.badge.label === 'Kembali') ||
       (filter === 'loyal'   && c.badge.label === 'Loyal')   ||
-      (filter === 'vip'     && c.badge.label === 'VIP')
+      (filter === 'vip'     && c.badge.label === 'VIP')     ||
+      (filter === 'dormant' && c.badge.label === 'Dormant')
     return matchSearch && matchFilter
   })
 
@@ -205,6 +206,7 @@ export default function CustomersPage() {
                     { key: 'kembali', label: 'Kembali' },
                     { key: 'loyal',   label: 'Loyal' },
                     { key: 'vip',     label: 'VIP' },
+                    { key: 'dormant', label: 'Dormant' },
                   ] as const).map(f => (
                     <button key={f.key} onClick={() => setFilter(f.key)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${

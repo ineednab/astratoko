@@ -354,14 +354,19 @@ export default function ImportPage() {
 
     setSubmitting(true)
     try {
-      await fetch('/api/import', {
+      const res = await fetch('/api/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seller_slug: slug, products: displayProducts }),
       })
-      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('pending_products')
+      // Only clear the buffer if the server actually accepted the products.
+      if (res.ok && typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem('pending_products')
+      }
     } catch {
-      /* still navigate; products stay in sessionStorage for retry via onboarding */
+      /* keep pending_products so onboarding can retry the import */
+    } finally {
+      setSubmitting(false)
     }
     router.push('/products')
   }, [displayProducts, router])

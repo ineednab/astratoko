@@ -199,7 +199,7 @@ export default function OrdersPage() {
                           </div>
                           <p className="text-sm text-gray-700 truncate">{order.product_name}</p>
                         </div>
-                        <p className="text-sm font-bold text-gray-900">{formatRp(order.price)}</p>
+                        <p className="text-sm font-bold text-gray-900">{formatRp(orderAmount(order))}</p>
                         <span className={`text-xs font-semibold px-2 py-1 rounded-lg w-fit ${
                           order.status === 'paid'    ? 'bg-green-100 text-green-700' :
                           order.status === 'pending' ? 'bg-blue-100 text-app-blue'  : 'bg-gray-100 text-gray-500'

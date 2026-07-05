@@ -432,8 +432,10 @@ function StepBuilding({
           slugRef.current = seller.slug
           if (typeof localStorage !== 'undefined') localStorage.setItem('seller_slug', seller.slug)
 
-          // Use CSV products from the import flow if present, else the demo catalog.
-          let importProducts = PRODUCTS.map((p) => ({ name: p.name, price: p.price, stock: p.stock, category: p.category }))
+          // CSV products from the /import flow win. Otherwise only seed the demo
+          // catalog when the user actually opted into an import — if they chose
+          // "Lewati"/manual (hasImport=false) we leave the store empty.
+          let importProducts: { name: string; price: number; stock: number; category: string }[] | null = null
           try {
             const pending = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pending_products') : null
             if (pending) {
@@ -441,13 +443,19 @@ function StepBuilding({
               if (Array.isArray(parsed) && parsed.length > 0) importProducts = parsed
               sessionStorage.removeItem('pending_products')
             }
-          } catch { /* fall back to demo catalog */ }
+          } catch { /* no pending CSV */ }
 
-          fetch('/api/import', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ seller_slug: seller.slug, products: importProducts }),
-          }).catch(() => {})
+          if (!importProducts && data.hasImport) {
+            importProducts = PRODUCTS.map((p) => ({ name: p.name, price: p.price, stock: p.stock, category: p.category }))
+          }
+
+          if (importProducts) {
+            fetch('/api/import', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ seller_slug: seller.slug, products: importProducts }),
+            }).catch(() => {})
+          }
         }
       } catch { /* use fallback slug */ }
       if (!cancelled && typeof localStorage !== 'undefined' && !localStorage.getItem('seller_slug')) {

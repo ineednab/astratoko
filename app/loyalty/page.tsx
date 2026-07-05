@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Zap, Gift, Share2, MessageCircle, ChevronRight } from 'lucide-react'
 import { formatRp } from '@/lib/utils'
+import { orderAmount } from '@/lib/metrics'
 import { Sidebar } from '@/components/Sidebar'
 import type { Seller, Order, Product } from '@/lib/types'
 
@@ -183,12 +184,12 @@ export default function LoyaltyPage() {
 
   if (loading) return <Skeleton />
 
-  // Derive loyalty members
+  // Derive loyalty members (paid orders only, consistent with dashboard/CRM)
   const memberMap = new Map<string, LoyaltyMember>()
-  orders.forEach(o => {
+  orders.filter(o => o.status === 'paid').forEach(o => {
     const m = memberMap.get(o.buyer_phone)
     if (m) {
-      m.orderCount++; m.totalSpend += o.price
+      m.orderCount++; m.totalSpend += orderAmount(o)
       if (new Date(o.created_at) > new Date(m.lastOrderTime)) m.lastOrderTime = o.created_at
       m.points = m.orderCount * 50
       m.tier   = getTier(m.points)
@@ -199,7 +200,7 @@ export default function LoyaltyPage() {
         name, phone: ph,
         maskedPhone: ph.length >= 8 ? ph.slice(0, 4) + '****' + ph.slice(-4) : ph,
         initial: name.charAt(0).toUpperCase(),
-        orderCount: 1, totalSpend: o.price,
+        orderCount: 1, totalSpend: orderAmount(o),
         points: 50, lastOrderTime: o.created_at,
         tier: getTier(50),
       })
