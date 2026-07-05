@@ -246,7 +246,7 @@ function CartSheet({
             {cart.map((item) => {
               const { color, Icon } = getCategoryStyle(item.product.category)
               return (
-                <div key={item.product.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-3">
+                <div key={item.product.id} className="flex items-center gap-3 bg-gray-50 rounded-2xl px-3 py-3">
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: color }}>
                     <Icon size={16} className="text-white" />
                   </div>
@@ -275,7 +275,7 @@ function CartSheet({
           </div>
 
           {/* Subtotal */}
-          <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center justify-between mb-5">
+          <div className="bg-gray-50 rounded-2xl px-4 py-3 flex items-center justify-between mb-5">
             <span className="text-sm text-gray-600">Subtotal ({totalQty} item)</span>
             <span className="font-extrabold text-gray-900">{formatRp(subtotal)}</span>
           </div>
@@ -453,6 +453,7 @@ function CheckoutModal({
   isDemoMode,
   isLinked,
   onDemoProgress,
+  onSuccess,
 }: {
   cart: CartItem[]
   seller: Seller
@@ -460,6 +461,7 @@ function CheckoutModal({
   isDemoMode?: boolean
   isLinked?: boolean
   onDemoProgress?: (p: DemoProgress) => void
+  onSuccess?: (opts: { points: number; sellerName: string }) => void
 }) {
   const DEMO_BUYERS = ['Justin Bieber', 'Dua Lipa', 'Sabrina Carpenter', 'Taylor Swift', 'Ariana Grande', 'Billie Eilish']
 
@@ -537,6 +539,7 @@ function CheckoutModal({
       })
       const json = await res.json()
       setOrderId(json.order?.id ?? null)
+      onSuccess?.({ points: pointsEarned, sellerName: seller.name })
       setStep('success')
       onDemoProgress?.('success')
     } catch {
@@ -678,7 +681,7 @@ function CheckoutModal({
             <div className="space-y-2.5">
               {SHIPPING_OPTIONS.map((opt) => (
                 <button key={opt.id} onClick={() => setSelectedShipping(opt.id)}
-                  className={`w-full flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all text-left ${selectedShipping === opt.id ? 'border-app-blue bg-app-blue-pale' : 'border-gray-100 bg-white hover:border-gray-200'}`}
+                  className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all text-left ${selectedShipping === opt.id ? 'border-app-blue bg-app-blue-pale' : 'border-gray-100 bg-white hover:border-gray-200'}`}
                 >
                   <span className="text-lg flex-shrink-0">{opt.icon}</span>
                   <div className="flex-1 min-w-0">
@@ -885,7 +888,7 @@ function CheckoutModal({
                 { id: 'cod'      as PaymentMethod, name: 'Bayar di Tempat', desc: 'Bayar saat diterima' },
               ] as { id: PaymentMethod; name: string; desc: string }[]).map((method) => (
                 <button key={method.id} onClick={() => setSelectedPayment(method.id)}
-                  className={`w-full flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all text-left ${selectedPayment === method.id ? 'border-app-blue bg-app-blue-pale' : 'border-gray-100 bg-white hover:border-gray-200'}`}
+                  className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all text-left ${selectedPayment === method.id ? 'border-app-blue bg-app-blue-pale' : 'border-gray-100 bg-white hover:border-gray-200'}`}
                 >
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm text-gray-700">{method.name}</p>
@@ -1321,7 +1324,10 @@ function PesananPanel({ isDemoMode }: { isDemoMode: boolean }) {
 
 // ── Akun Tab Panel ────────────────────────────────────────────────────────────
 
-function AkunPanel({ isDemoMode, isLinked, onLink }: { isDemoMode: boolean; isLinked: boolean; onLink: () => void }) {
+function AkunPanel({ isDemoMode, isLinked, onLink, astraPoints, bonusStamps }: {
+  isDemoMode: boolean; isLinked: boolean; onLink: () => void
+  astraPoints: number; bonusStamps: Record<string, number>
+}) {
   const [bindingState, setBindingState] = useState<'idle' | 'opening' | 'waiting'>('idle')
   const [bindingUrl, setBindingUrl] = useState<string | null>(null)
 
@@ -1392,8 +1398,8 @@ function AkunPanel({ isDemoMode, isLinked, onLink }: { isDemoMode: boolean; isLi
         <div className="mx-4 mb-4 bg-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
           <div>
             <p className="text-blue-300 text-[10px] mb-0.5">AstraPoints</p>
-            <p className="text-2xl font-extrabold text-white">{buyer.astraPoints}</p>
-            <p className="text-[10px] text-blue-300 mt-0.5">≈ {formatRp(buyer.astraPoints * 10)} saldo</p>
+            <p className="text-2xl font-extrabold text-white">{astraPoints}</p>
+            <p className="text-[10px] text-blue-300 mt-0.5">≈ {formatRp(astraPoints * 10)} saldo</p>
           </div>
           <Star size={32} className="text-astrapay-gold" fill="currentColor" />
         </div>
@@ -1403,7 +1409,7 @@ function AkunPanel({ isDemoMode, isLinked, onLink }: { isDemoMode: boolean; isLi
       <p className="font-extrabold text-gray-900 text-sm mb-3">Loyalty Card</p>
       <div className="space-y-3">
         {buyer.loyaltyCards.map((card) => (
-          <LoyaltyStampCard key={card.store} {...card} />
+          <LoyaltyStampCard key={card.store} {...card} stamps={card.stamps + (bonusStamps[card.store] ?? 0)} />
         ))}
       </div>
     </div>
@@ -1487,6 +1493,8 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
   const [demoProgress,     setDemoProgress]     = useState<DemoProgress>('browse')
   const [toastVisible,     setToastVisible]     = useState(false)
   const [pointsBannerOpen, setPointsBannerOpen] = useState(true)
+  const [astraPoints,      setAstraPoints]      = useState(DEMO_BUYER_DATA.astraPoints)
+  const [bonusStamps,      setBonusStamps]      = useState<Record<string, number>>({})
 
   // Cart state
   const [cart,             setCart]             = useState<CartItem[]>([])
@@ -1810,7 +1818,7 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
       {activeTab === 'pesanan' && <PesananPanel isDemoMode={isDemoMode} />}
 
       {/* ── Akun tab ── */}
-      {activeTab === 'akun' && <AkunPanel isDemoMode={isDemoMode} isLinked={isLinked} onLink={() => setIsLinked(true)} />}
+      {activeTab === 'akun' && <AkunPanel isDemoMode={isDemoMode} isLinked={isLinked} onLink={() => setIsLinked(true)} astraPoints={astraPoints} bonusStamps={bonusStamps} />}
 
       {/* Bottom nav */}
       <BottomNav
@@ -1851,6 +1859,10 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
           isDemoMode={isDemoMode}
           isLinked={isLinked}
           onDemoProgress={setDemoProgress}
+          onSuccess={({ points, sellerName }) => {
+            setAstraPoints((p) => p + points)
+            setBonusStamps((prev) => ({ ...prev, [sellerName]: (prev[sellerName] ?? 0) + 1 }))
+          }}
         />
       )}
     </div>
