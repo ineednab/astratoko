@@ -379,7 +379,7 @@ export default function DashboardPage() {
           <header className="sticky top-0 z-10 bg-white/90 backdrop-blur-md border-b border-gray-100 px-8 py-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-400 font-medium">Merchant Dashboard</p>
+                <p className="text-xs text-gray-400 font-medium">Dashboard Toko</p>
                 <p className="text-base font-extrabold text-gray-900 leading-tight">
                   Selamat datang, {seller.name.split(' ')[0]} 👋
                 </p>
@@ -441,7 +441,7 @@ export default function DashboardPage() {
                       </p>
                       <p className="text-blue-300 text-sm mt-3">
                         {products.length > 0
-                          ? 'Bagikan link tokomu — pesanan pertama biasanya datang dalam 24 jam.'
+                          ? 'Bagikan link tokomu ke repeat buyer — pesanan dari channel ini langsung masuk ke dashboardmu.'
                           : 'Import dari Shopee, Tokopedia, atau TikTok Shop dalam hitungan menit.'}
                       </p>
                     </>
@@ -456,7 +456,7 @@ export default function DashboardPage() {
                     <div className="bg-white/10 rounded-xl px-4 py-3 text-right">
                       <p className="text-[10px] text-blue-300 font-medium mb-0.5">Margin Dipertahankan</p>
                       <p className="text-xl font-extrabold text-white">{savings > 0 ? formatRpShort(animSavings) : 'Rp 0'}</p>
-                      <p className="text-[10px] text-blue-400 mt-0.5">biaya {Math.round(seller.astratoko_fee_pct*100)}% flat</p>
+                      <p className="text-[10px] text-blue-400 mt-0.5">hemat vs biaya marketplace</p>
                     </div>
                   )}
                   {gmv === 0 && (
@@ -512,12 +512,12 @@ export default function DashboardPage() {
                       <span className="text-base">🛡️</span>
                     </div>
                     <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-                      direct commerce
+                      Channel Langsung
                     </span>
                   </div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Margin Dipertahankan</p>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Penghematan Biaya</p>
                   <p className="text-2xl font-extrabold text-gray-900 leading-none">{savings > 0 ? formatRpShort(animSavings) : 'Rp 0'}</p>
-                  <p className="text-xs text-gray-400 mt-1.5">biaya {Math.round(seller.astratoko_fee_pct*100)}% flat</p>
+                  <p className="text-xs text-gray-400 mt-1.5">vs biaya {Math.round(seller.platform_fee_pct*100)}% marketplace</p>
                 </div>
                 {/* Owned Customers */}
                 <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition-shadow">
@@ -664,7 +664,7 @@ export default function DashboardPage() {
                       { label: 'Loyal',    count: loyalList.length,    color: 'bg-purple-50 border-purple-100', text: 'text-purple-700', icon: '💜', sub: '3+ pembelian' },
                       { label: 'Kembali',  count: repeatList.length,   color: 'bg-blue-50 border-blue-100',     text: 'text-blue-700',   icon: '🔁', sub: '2 pembelian' },
                       { label: 'Baru',     count: newCustomers.length, color: 'bg-green-50 border-green-100',   text: 'text-green-700',  icon: '✨', sub: 'pelanggan baru' },
-                      { label: 'Dormant',  count: inactive.length,     color: 'bg-gray-50 border-gray-150',     text: 'text-gray-500',   icon: '😴', sub: '>30 hari lalu' },
+                      { label: 'Tidak Aktif', count: inactive.length,  color: 'bg-gray-50 border-gray-150',     text: 'text-gray-500',   icon: '😴', sub: '>30 hari lalu' },
                     ].map(seg => (
                       <div key={seg.label} className={`rounded-xl p-3.5 border ${seg.color}`}>
                         <div className="flex items-center gap-1.5 mb-1">
@@ -685,7 +685,7 @@ export default function DashboardPage() {
                           {topCustomer.initial}
                         </div>
                         <div>
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Top Customer</p>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Pelanggan Terbaik</p>
                           <p className="text-sm font-extrabold text-gray-900">{topCustomer.name}</p>
                           <p className="text-xs text-gray-400">{topCustomer.orderCount}× · {formatRpShort(topCustomer.totalSpend)}</p>
                         </div>
@@ -702,7 +702,7 @@ export default function DashboardPage() {
                     {inactive.length > 0 && <div className="w-px h-10 bg-gray-100" />}
                     {inactive.length > 0 && (
                       <div className="flex-1">
-                        <p className="text-[10px] font-bold text-red-500 uppercase tracking-wide mb-1">AI Insight</p>
+                        <p className="text-[10px] font-bold text-red-500 uppercase tracking-wide mb-1">💡 AI Insight</p>
                         <p className="text-xs text-gray-600 leading-relaxed">
                           <span className="font-bold text-gray-900">{inactive.length} pelanggan</span> belum kembali lebih dari 30 hari.
                           Kirim pesan personal via WhatsApp — nomor kontak mereka tersimpan di dashboardmu.
@@ -711,7 +711,7 @@ export default function DashboardPage() {
                     )}
                     {inactive.length === 0 && repeatBuyers === 0 && custMap.size > 0 && (
                       <div className="flex-1">
-                        <p className="text-[10px] font-bold text-violet-600 uppercase tracking-wide mb-1">AI Insight</p>
+                        <p className="text-[10px] font-bold text-violet-600 uppercase tracking-wide mb-1">💡 AI Insight</p>
                         <p className="text-xs text-gray-600 leading-relaxed">
                           <span className="font-bold text-gray-900">{custMap.size} pelanggan</span> sudah beli sekali.
                           Kirim pesan personal dengan diskon 10% untuk pembelian kedua — konversi rata-rata 28%.
@@ -850,10 +850,10 @@ export default function DashboardPage() {
                   <div>
                     <div className="flex items-center gap-1.5">
                       <Star size={13} className="text-amber-500" fill="currentColor" />
-                      <h2 className="text-sm font-extrabold text-gray-900">Loyal Customers</h2>
+                      <h2 className="text-sm font-extrabold text-gray-900">Pelanggan Setia</h2>
                     </div>
                     {loyalCustomers.length > 0 && (
-                      <p className="text-xs text-gray-400 mt-0.5">{loyalCustomers.length} pelanggan setia</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{loyalCustomers.length} pelanggan kembali beli</p>
                     )}
                   </div>
                   {custMap.size > 0 && (
