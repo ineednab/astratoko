@@ -491,6 +491,8 @@ function CheckoutModal({
   const [astraPayTxId,       setAstraPayTxId]       = useState<string | null>(null)
   const [astraPayError,      setAstraPayError]      = useState<string | null>(null)
   const [astraPayBindingUrl, setAstraPayBindingUrl] = useState<string | null>(null)
+  const [bindingTabOpened,   setBindingTabOpened]   = useState(false)
+  const fallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const confirmingRef = useRef(false)
   const pollRef       = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -638,17 +640,26 @@ function CheckoutModal({
     }
 
     const pollBindingUntilLinked = (phone: string) => {
+      // Poll DB for token (works if server callback is configured)
       pollRef.current = setInterval(async () => {
         try {
           const res = await fetch(`/api/astrapay/check-binding?phone=${encodeURIComponent(phone)}`)
           const data = await res.json()
           if (data.bound && data.token) {
             if (pollRef.current) clearInterval(pollRef.current)
+            if (fallbackRef.current) clearTimeout(fallbackRef.current)
             setAstraPayBindingUrl(null)
             startPayment(data.token)
           }
         } catch { /* keep polling */ }
       }, 3000)
+
+      // After 30s, fall back to direct H2H with phoneNo (works once user is registered on AstraPay)
+      fallbackRef.current = setTimeout(() => {
+        if (pollRef.current) clearInterval(pollRef.current)
+        setAstraPayBindingUrl(null)
+        startPayment()
+      }, 30_000)
     }
 
     // Check if already bound, otherwise initiate binding first
@@ -685,6 +696,7 @@ function CheckoutModal({
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
+      if (fallbackRef.current) clearTimeout(fallbackRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, isDemo, selectedPayment])
@@ -1110,10 +1122,14 @@ function CheckoutModal({
                         <>
                           <div className="flex items-center justify-center gap-2 mb-2">
                             <div className="w-2 h-2 bg-yellow-300 rounded-full animate-pulse" />
-                            <p className="text-sm text-blue-100 font-medium">Hubungkan akun AstraPay dulu</p>
+                            <p className="text-sm text-blue-100 font-medium">
+                              {bindingTabOpened ? 'Menunggu konfirmasi AstraPay...' : 'Hubungkan akun AstraPay dulu'}
+                            </p>
                           </div>
                           <p className="text-[10px] text-blue-200 text-center">
-                            Selesaikan registrasi di tab AstraPay. Pembayaran otomatis dilanjutkan setelah terhubung.
+                            {bindingTabOpened
+                              ? 'Selesaikan di tab AstraPay, lalu tekan tombol di bawah.'
+                              : 'Selesaikan registrasi di tab AstraPay. Pembayaran otomatis dilanjutkan setelah terhubung.'}
                           </p>
                         </>
                       ) : astraPayUrl ? (
@@ -1137,12 +1153,26 @@ function CheckoutModal({
                       )}
                     </div>
 
-                    {astraPayBindingUrl && (
+                    {astraPayBindingUrl && !bindingTabOpened && (
                       <a href={astraPayBindingUrl} target="_blank" rel="noopener noreferrer"
+                        onClick={() => setBindingTabOpened(true)}
                         className="w-full bg-yellow-500 hover:bg-yellow-400 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm"
                       >
                         Buka AstraPay — Daftar / Hubungkan <ArrowRight size={16} />
                       </a>
+                    )}
+                    {astraPayBindingUrl && bindingTabOpened && (
+                      <button
+                        onClick={() => {
+                          if (pollRef.current) clearInterval(pollRef.current)
+                          if (fallbackRef.current) clearTimeout(fallbackRef.current)
+                          setAstraPayBindingUrl(null)
+                          startPayment()
+                        }}
+                        className="w-full bg-green-500 hover:bg-green-400 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm"
+                      >
+                        Sudah selesai di AstraPay — Lanjut Bayar <ArrowRight size={16} />
+                      </button>
                     )}
                     {astraPayUrl && !astraPayBindingUrl && (
                       <>
