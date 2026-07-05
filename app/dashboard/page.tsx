@@ -9,7 +9,7 @@ import {
   Flame, RefreshCw, Clock,
 } from 'lucide-react'
 import { formatRp, formatRpShort } from '@/lib/utils'
-import { orderAmount } from '@/lib/metrics'
+import { orderAmount, customerTier } from '@/lib/metrics'
 import { getCategoryStyle } from '@/lib/categories'
 import { supabase } from '@/lib/supabase'
 import { Sidebar } from '@/components/Sidebar'
@@ -246,9 +246,9 @@ export default function DashboardPage() {
 
   // ── More derivations ──────────────────────────────────────────────────────
 
-  // Customer map (all-time)
+  // Customer map (paid orders only, consistent with CRM/loyalty)
   const custMap = new Map<string, { name: string; phone: string; orderCount: number; totalSpend: number; lastOrderTime: string; points: number; initial: string }>()
-  orders.forEach(o => {
+  paidOrders.forEach(o => {
     const c = custMap.get(o.buyer_phone)
     if (c) {
       c.orderCount++; c.totalSpend += orderAmount(o)
@@ -284,7 +284,7 @@ export default function DashboardPage() {
     const repeatOnes = Array.from(custMap.values()).filter(c => c.orderCount >= 2)
     if (repeatOnes.length === 0) return null
     const total = repeatOnes.reduce((s, c) => {
-      const cOrders = orders.filter(o => o.buyer_phone === c.phone).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      const cOrders = paidOrders.filter(o => o.buyer_phone === c.phone).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
       if (cOrders.length < 2) return s
       return s + (new Date(cOrders[cOrders.length - 1].created_at).getTime() - new Date(cOrders[0].created_at).getTime()) / (cOrders.length - 1) / (24 * 60 * 60 * 1000)
     }, 0)
@@ -617,19 +617,20 @@ export default function DashboardPage() {
 
             {/* ── CUSTOMER OWNERSHIP ── */}
             {orders.length > 0 && (() => {
-              const now = Date.now()
-              const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000
               const allCustomers = Array.from(custMap.values())
-              const vip         = allCustomers.filter(c => c.orderCount >= 3)
-              const repeatList  = allCustomers.filter(c => c.orderCount === 2)
-              const newCustomers= allCustomers.filter(c => c.orderCount === 1 && (now - new Date(c.lastOrderTime).getTime()) <= thirtyDaysMs)
-              const inactive    = allCustomers.filter(c => (now - new Date(c.lastOrderTime).getTime()) > thirtyDaysMs)
+              const tierOf = (c: typeof allCustomers[number]) =>
+                customerTier({ orderCount: c.orderCount, totalSpend: c.totalSpend, lastOrderTime: c.lastOrderTime }).label
+              const vip          = allCustomers.filter(c => tierOf(c) === 'VIP')
+              const loyalList    = allCustomers.filter(c => tierOf(c) === 'Loyal')
+              const repeatList   = allCustomers.filter(c => tierOf(c) === 'Kembali')
+              const newCustomers = allCustomers.filter(c => tierOf(c) === 'Baru')
+              const inactive     = allCustomers.filter(c => tierOf(c) === 'Dormant')
               const topCustomer = allCustomers.sort((a, b) => b.totalSpend - a.totalSpend)[0]
               const avgDaysBetween = (() => {
                 const repeatOnes = allCustomers.filter(c => c.orderCount >= 2)
                 if (repeatOnes.length === 0) return null
                 return Math.round(repeatOnes.reduce((s, c) => {
-                  const cOrders = orders.filter(o => o.buyer_phone === c.phone).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                  const cOrders = paidOrders.filter(o => o.buyer_phone === c.phone).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
                   if (cOrders.length < 2) return s
                   const days = (new Date(cOrders[cOrders.length - 1].created_at).getTime() - new Date(cOrders[0].created_at).getTime()) / (cOrders.length - 1) / (24 * 60 * 60 * 1000)
                   return s + days
@@ -656,13 +657,14 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  {/* Segments */}
-                  <div className="px-6 py-4 grid grid-cols-4 gap-3 border-b border-gray-50">
+                  {/* Segments — single taxonomy, konsisten dengan badge di halaman Pelanggan */}
+                  <div className="px-6 py-4 grid grid-cols-5 gap-3 border-b border-gray-50">
                     {[
-                      { label: 'VIP',            count: vip.length,          color: 'bg-amber-50 border-amber-100',   text: 'text-amber-700',  icon: '⭐', sub: '3+ pembelian' },
-                      { label: 'Repeat Buyers',  count: repeatList.length,   color: 'bg-purple-50 border-purple-100', text: 'text-purple-700', icon: '🔁', sub: '2 pembelian' },
-                      { label: 'Pelanggan Baru', count: newCustomers.length, color: 'bg-blue-50 border-blue-100',     text: 'text-blue-700',   icon: '✨', sub: '≤30 hari' },
-                      { label: 'Tidak Aktif',   count: inactive.length,     color: 'bg-red-50 border-red-100',       text: 'text-red-700',    icon: '😴', sub: '>30 hari lalu' },
+                      { label: 'VIP',      count: vip.length,          color: 'bg-amber-50 border-amber-100',   text: 'text-amber-700',  icon: '⭐', sub: '5+ / Rp500rb' },
+                      { label: 'Loyal',    count: loyalList.length,    color: 'bg-purple-50 border-purple-100', text: 'text-purple-700', icon: '💜', sub: '3+ pembelian' },
+                      { label: 'Kembali',  count: repeatList.length,   color: 'bg-blue-50 border-blue-100',     text: 'text-blue-700',   icon: '🔁', sub: '2 pembelian' },
+                      { label: 'Baru',     count: newCustomers.length, color: 'bg-green-50 border-green-100',   text: 'text-green-700',  icon: '✨', sub: 'pelanggan baru' },
+                      { label: 'Dormant',  count: inactive.length,     color: 'bg-gray-50 border-gray-150',     text: 'text-gray-500',   icon: '😴', sub: '>30 hari lalu' },
                     ].map(seg => (
                       <div key={seg.label} className={`rounded-xl p-3.5 border ${seg.color}`}>
                         <div className="flex items-center gap-1.5 mb-1">
@@ -882,9 +884,7 @@ export default function DashboardPage() {
                   <div className="divide-y divide-gray-50">
                     {loyalCustomers.slice(0, 5).map((c, i) => {
                       const waPhone = c.phone.startsWith('0') ? '62' + c.phone.slice(1) : c.phone
-                      const badge = i === 0 ? { label: 'VIP', color: 'bg-amber-100 text-amber-700' }
-                        : c.orderCount >= 3 ? { label: 'Top Spender', color: 'bg-purple-100 text-purple-700' }
-                        : { label: 'Repeat Buyer', color: 'bg-blue-100 text-blue-700' }
+                      const badge = customerTier({ orderCount: c.orderCount, totalSpend: c.totalSpend, lastOrderTime: c.lastOrderTime })
                       return (
                         <div key={c.phone} className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/60 transition-colors group">
                           <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-white font-extrabold text-xs"
@@ -894,7 +894,7 @@ export default function DashboardPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 mb-0.5">
                               <p className="text-sm font-semibold text-gray-900 truncate">{c.name}</p>
-                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${badge.color}`}>{badge.label}</span>
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${badge.cls}`}>{badge.label}</span>
                             </div>
                             <p className="text-xs text-gray-400">{c.orderCount}× · {formatRpShort(c.totalSpend)} · ⚡ {c.points} pts</p>
                           </div>
