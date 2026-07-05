@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Fragment } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ArrowRight, Share2, Star, X, ShoppingBag, CheckCircle, MessageCircle, TrendingUp, Bell, MapPin, Truck, ShoppingCart, ChevronDown, Home, LayoutGrid, Package, User } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Share2, Star, X, ShoppingBag, CheckCircle, TrendingUp, Bell, MapPin, Truck, ShoppingCart, ChevronDown, Home, LayoutGrid, Package, User, Zap } from 'lucide-react'
 import { formatRp } from '@/lib/utils'
 import { getCategoryStyle } from '@/lib/categories'
 import Confetti from '@/components/Confetti'
@@ -147,7 +147,19 @@ function ProductDetailSheet({
 
           {/* Product hero */}
           <div className="relative rounded-2xl overflow-hidden mb-4" style={{ backgroundColor: color }}>
-            <div className="flex items-center justify-center py-12">
+            {product.image_url ? (
+              <img
+                src={product.image_url}
+                alt={product.name}
+                className="w-full h-48 object-cover"
+                onError={(e) => {
+                  const target = e.currentTarget
+                  target.style.display = 'none'
+                  target.nextElementSibling?.classList.remove('hidden')
+                }}
+              />
+            ) : null}
+            <div className={`flex items-center justify-center py-12 ${product.image_url ? 'hidden' : ''}`}>
               <Icon size={56} className="text-white" />
             </div>
             {isDemoMode && (
@@ -381,6 +393,7 @@ function HeroBanner({
   const topCategory = Object.entries(categoryCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
   const { color, Icon } = getCategoryStyle(topCategory)
   const tagline = BANNER_TAGLINES[topCategory] ?? `Produk terpercaya\ndari ${seller.name}`
+  const heroImage = seller.banner_image_url ?? products.find(p => p.image_url)?.image_url
 
   return (
     <div
@@ -391,7 +404,7 @@ function HeroBanner({
         <div className="flex-1 px-5 py-5 flex flex-col justify-between min-w-0">
           <div>
             <p className="text-white font-extrabold text-[17px] leading-snug whitespace-pre-line">{tagline}</p>
-            <p className="text-blue-300 text-[11px] mt-1.5">{seller.location} · {products.length} produk</p>
+            <p className="text-blue-300 text-[11px] mt-1.5">{products.length} produk</p>
           </div>
           <button
             onClick={onViewCatalog}
@@ -400,13 +413,21 @@ function HeroBanner({
             Lihat Katalog
           </button>
         </div>
-        <div
-          className="w-28 flex-shrink-0 relative overflow-hidden"
-          style={{ background: `linear-gradient(135deg, transparent 30%, ${color}55 100%)` }}
+        <div className="w-36 flex-shrink-0 relative overflow-hidden"
+          style={{ background: heroImage ? 'transparent' : `linear-gradient(135deg, transparent 30%, ${color}55 100%)` }}
         >
-          <div className="absolute -right-3 top-1/2 -translate-y-1/2 opacity-20">
-            <Icon size={104} className="text-white" />
-          </div>
+          {heroImage ? (
+            <img
+              src={heroImage}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover object-center"
+              style={{ maskImage: 'linear-gradient(to right, transparent 0%, black 40%)', WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 40%)' }}
+            />
+          ) : (
+            <div className="absolute -right-3 top-1/2 -translate-y-1/2 opacity-20">
+              <Icon size={104} className="text-white" />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -432,6 +453,8 @@ function CheckoutModal({
   onRemove,
   onUpdateQty,
   isDemoMode,
+  isLinked,
+  onLink,
   onDemoProgress,
 }: {
   cart: CartItem[]
@@ -440,13 +463,19 @@ function CheckoutModal({
   onRemove: (productId: string) => void
   onUpdateQty: (productId: string, qty: number) => void
   isDemoMode?: boolean
+  isLinked?: boolean
+  onLink?: () => void
   onDemoProgress?: (p: DemoProgress) => void
 }) {
   const DEMO_BUYERS = ['Justin Bieber', 'Dua Lipa', 'Sabrina Carpenter', 'Taylor Swift', 'Ariana Grande', 'Billie Eilish']
 
   const [step,             setStep]             = useState<CheckoutStep>('cart_review')
-  const [buyerName,        setBuyerName]        = useState(() => isDemoMode ? DEMO_BUYERS[Math.floor(Math.random() * DEMO_BUYERS.length)] : '')
-  const [buyerPhone,       setBuyerPhone]       = useState('')
+  const [buyerName,        setBuyerName]        = useState(() => {
+    if (isLinked) return DEMO_BUYER_DATA.name
+    if (isDemoMode) return DEMO_BUYERS[Math.floor(Math.random() * DEMO_BUYERS.length)]
+    return ''
+  })
+  const [buyerPhone,       setBuyerPhone]       = useState(() => isLinked ? DEMO_BUYER_DATA.phone : '')
   const [buyerAddress,     setBuyerAddress]     = useState('')
   const [kota,             setKota]             = useState('')
   const [kodePos,          setKodePos]          = useState('')
@@ -458,9 +487,10 @@ function CheckoutModal({
   const [qrisStatus,       setQrisStatus]       = useState<QrisStatus>('waiting')
   const [merchantPhase,    setMerchantPhase]    = useState<MerchantPhase>('intro')
   const [summaryOpen,      setSummaryOpen]      = useState(false)
-  const [astraPayUrl,      setAstraPayUrl]      = useState<string | null>(null)
-  const [astraPayTxId,     setAstraPayTxId]     = useState<string | null>(null)
-  const [astraPayError,    setAstraPayError]    = useState<string | null>(null)
+  const [astraPayUrl,        setAstraPayUrl]        = useState<string | null>(null)
+  const [astraPayTxId,       setAstraPayTxId]       = useState<string | null>(null)
+  const [astraPayError,      setAstraPayError]      = useState<string | null>(null)
+  const [astraPayBindingUrl, setAstraPayBindingUrl] = useState<string | null>(null)
   const confirmingRef = useRef(false)
   const pollRef       = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -498,13 +528,18 @@ function CheckoutModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          seller_id:    seller.id,
-          product_id:   primary.id,
-          product_name: cart.length > 1 ? `${primary.name} +${cart.length - 1} lainnya` : cart[0].quantity > 1 ? `${primary.name} ×${cart[0].quantity}` : primary.name,
-          price:        subtotal,
-          category:     primary.category,
-          buyer_name:   buyerName,
-          buyer_phone:  buyerPhone,
+          seller_id:       seller.id,
+          product_id:      primary.id,
+          product_name:    cart.length > 1 ? `${primary.name} +${cart.length - 1} lainnya` : cart[0].quantity > 1 ? `${primary.name} ×${cart[0].quantity}` : primary.name,
+          price:           subtotal,
+          quantity:        totalQty,
+          shipping_cost:   shipping.price,
+          shipping_method: shipping.id,
+          buyer_address:   buyerAddress,
+          buyer_city:      kota,
+          category:        primary.category,
+          buyer_name:      buyerName,
+          buyer_phone:     buyerPhone,
         }),
       })
       const json = await res.json()
@@ -529,14 +564,11 @@ function CheckoutModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, isDemo])
 
-  // Real AstraPay payment — create payment + poll for status
+  // Real AstraPay payment — account binding first, then create payment + poll status
   useEffect(() => {
     if (isDemo || step !== 'qris' || selectedPayment !== 'astrapay') return
     if (astraPayTxId) return // already initiated
-
-    const txId = `AT-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`
-    setAstraPayTxId(txId)
-    setAstraPayError(null)
+    if (total === 0) { handleConfirm(); return } // free item, skip payment
 
     const primaryProduct = cart[0].product
     const description = cart.length > 1
@@ -545,59 +577,110 @@ function CheckoutModal({
         ? `${primaryProduct.name} ×${cart[0].quantity}`
         : primaryProduct.name
 
-    fetch('/api/astrapay/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        merchantTransactionId: txId,
-        amount: total,
-        description,
-      }),
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (data.error || !data.urlRedirect) {
-          // If in demo mode and AstraPay unavailable, fall back to cinematic QRIS
+    const startPayment = (bankCardToken?: string) => {
+      const txId = `AT-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`
+      setAstraPayTxId(txId)
+      setAstraPayError(null)
+
+      fetch('/api/astrapay/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          merchantTransactionId: txId,
+          amount: total,
+          description,
+          phoneNo: buyerPhone,
+          bankCardToken,
+        }),
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.error || !data.urlRedirect) {
+            if (isDemoMode) {
+              setAstraPayTxId(null)
+              setQrisStatus('waiting')
+              const t1 = setTimeout(() => setQrisStatus('detected'),  3000)
+              const t2 = setTimeout(() => setQrisStatus('verifying'), 5000)
+              const t3 = setTimeout(() => setQrisStatus('verified'),  7000)
+              const t4 = setTimeout(() => handleConfirm(),            8500)
+              pollRef.current = t4 as unknown as ReturnType<typeof setInterval>
+              setTimeout(() => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }, 9000)
+              return
+            }
+            setAstraPayError(data.error ?? 'Gagal membuat pembayaran')
+            return
+          }
+          setAstraPayUrl(data.urlRedirect)
+          window.open(data.urlRedirect, '_blank', 'noopener,noreferrer')
+
+          pollRef.current = setInterval(async () => {
+            try {
+              const res = await fetch(`/api/astrapay/status?id=${txId}&amount=${total}`)
+              const { status } = await res.json()
+              if (status === '00') {
+                if (pollRef.current) clearInterval(pollRef.current)
+                handleConfirm()
+              } else if (status === '05' || status === '06') {
+                if (pollRef.current) clearInterval(pollRef.current)
+                setStep('payment_failed')
+              }
+            } catch { /* keep polling */ }
+          }, 3000)
+        })
+        .catch(() => {
           if (isDemoMode) {
             setAstraPayTxId(null)
             setQrisStatus('waiting')
-            const t1 = setTimeout(() => setQrisStatus('detected'),  3000)
-            const t2 = setTimeout(() => setQrisStatus('verifying'), 5000)
-            const t3 = setTimeout(() => setQrisStatus('verified'),  7000)
-            const t4 = setTimeout(() => handleConfirm(),            8500)
-            pollRef.current = t4 as unknown as ReturnType<typeof setInterval>
-            setTimeout(() => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }, 9000)
-            return
+          } else {
+            setAstraPayError('Tidak dapat terhubung ke AstraPay')
           }
-          setAstraPayError(data.error ?? 'Gagal membuat pembayaran')
-          return
-        }
-        setAstraPayUrl(data.urlRedirect)
-        window.open(data.urlRedirect, '_blank', 'noopener,noreferrer')
+        })
+    }
 
-        // Poll for payment status every 3 seconds
-        pollRef.current = setInterval(async () => {
-          try {
-            const res = await fetch(`/api/astrapay/status?id=${txId}&amount=${total}`)
-            const { status } = await res.json()
-            if (status === '00') {
-              if (pollRef.current) clearInterval(pollRef.current)
-              handleConfirm()
-            } else if (status === '05' || status === '06') {
-              if (pollRef.current) clearInterval(pollRef.current)
-              setStep('payment_failed')
-            }
-          } catch { /* keep polling */ }
-        }, 3000)
+    const pollBindingUntilLinked = (phone: string) => {
+      pollRef.current = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/astrapay/check-binding?phone=${encodeURIComponent(phone)}`)
+          const data = await res.json()
+          if (data.bound && data.token) {
+            if (pollRef.current) clearInterval(pollRef.current)
+            setAstraPayBindingUrl(null)
+            startPayment(data.token)
+          }
+        } catch { /* keep polling */ }
+      }, 3000)
+    }
+
+    // Check if already bound, otherwise initiate binding first
+    fetch(`/api/astrapay/check-binding?phone=${encodeURIComponent(buyerPhone)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.bound && data.token) {
+          startPayment(data.token)
+        } else {
+          // Initiate account binding
+          fetch('/api/astrapay/bind', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phoneNo: buyerPhone }),
+          })
+            .then(r => r.json())
+            .then(bindData => {
+              if (bindData.redirectUrl) {
+                setAstraPayBindingUrl(bindData.redirectUrl)
+                window.open(bindData.redirectUrl, '_blank', 'noopener,noreferrer')
+                pollBindingUntilLinked(buyerPhone)
+              } else {
+                // Binding not available — try direct H2H (works if phone already registered)
+                startPayment()
+              }
+            })
+            .catch(() => setAstraPayError('Tidak dapat terhubung ke AstraPay'))
+        }
       })
       .catch(() => {
-        // Network error — fall back to cinematic QRIS in demo mode
-        if (isDemoMode) {
-          setAstraPayTxId(null)
-          setQrisStatus('waiting')
-        } else {
-          setAstraPayError('Tidak dapat terhubung ke AstraPay')
-        }
+        // Fallback: try payment directly without binding token
+        startPayment()
       })
 
     return () => {
@@ -796,13 +879,33 @@ function CheckoutModal({
               <h3 className="font-extrabold text-gray-900 text-lg">Info Pembeli</h3>
             </div>
 
+            {isLinked ? (
+              <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 mb-3">
+                <CheckCircle size={13} className="text-app-blue flex-shrink-0" />
+                <p className="text-xs text-app-blue font-medium">Terisi otomatis dari akun AstraPay kamu</p>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setBuyerName(DEMO_BUYER_DATA.name)
+                  setBuyerPhone(DEMO_BUYER_DATA.phone)
+                  setFormErrors({})
+                  onLink?.()
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl px-3 py-2.5 mb-3 transition-colors"
+              >
+                <Zap size={13} className="text-astrapay-gold" fill="currentColor" />
+                <p className="text-xs text-app-blue font-semibold">Gunakan data dari AstraPay</p>
+              </button>
+            )}
+
             <div className="space-y-3 mb-4">
               {/* Nama */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nama Lengkap</label>
                 <input type="text" value={buyerName} onChange={(e) => { setBuyerName(e.target.value); setFormErrors((p) => ({ ...p, nama: '' })) }}
                   placeholder="contoh: Justin Bieber" autoFocus
-                  className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors ${formErrors.nama ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                  className={`w-full border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 transition-colors ${formErrors.nama ? 'border-red-300 bg-red-50' : isLinked ? 'bg-blue-50/50 border-blue-100 focus:bg-white' : 'bg-gray-50 border-gray-200 focus:bg-white'}`}
                 />
                 {formErrors.nama && <p className="text-xs text-red-500 mt-1">{formErrors.nama}</p>}
               </div>
@@ -812,7 +915,7 @@ function CheckoutModal({
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nomor WhatsApp</label>
                 <input type="tel" value={buyerPhone} onChange={(e) => { setBuyerPhone(e.target.value); setFormErrors((p) => ({ ...p, wa: '' })) }}
                   placeholder="08123456789"
-                  className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors ${formErrors.wa ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                  className={`w-full border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 transition-colors ${formErrors.wa ? 'border-red-300 bg-red-50' : isLinked ? 'bg-blue-50/50 border-blue-100 focus:bg-white' : 'bg-gray-50 border-gray-200 focus:bg-white'}`}
                 />
                 {formErrors.wa && <p className="text-xs text-red-500 mt-1">{formErrors.wa}</p>}
               </div>
@@ -972,7 +1075,7 @@ function CheckoutModal({
         {step === 'qris' && (
           <div className="px-5 pb-8 pt-3 text-center">
             <div className="flex items-center gap-3 mb-4">
-              <button onClick={() => { if (pollRef.current) clearInterval(pollRef.current); setStep('payment_method') }}
+              <button onClick={() => { if (pollRef.current) clearInterval(pollRef.current); setAstraPayTxId(null); setAstraPayUrl(null); setAstraPayBindingUrl(null); setAstraPayError(null); setStep('payment_method') }}
                 className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
                 <ArrowLeft size={16} />
               </button>
@@ -990,7 +1093,7 @@ function CheckoutModal({
                   <div className="bg-red-50 border border-red-100 rounded-2xl px-4 py-5">
                     <p className="text-sm font-semibold text-red-700 mb-1">Gagal terhubung ke AstraPay</p>
                     <p className="text-xs text-red-500 font-mono break-all mb-3">{astraPayError}</p>
-                    <button onClick={() => { setAstraPayTxId(null); setAstraPayError(null) }}
+                    <button onClick={() => { setAstraPayTxId(null); setAstraPayError(null); setAstraPayBindingUrl(null) }}
                       className="text-xs font-bold text-red-600 underline">Coba Lagi</button>
                   </div>
                 ) : (
@@ -1003,7 +1106,17 @@ function CheckoutModal({
                         </div>
                         <span className="font-extrabold text-lg">AstraPay</span>
                       </div>
-                      {astraPayUrl ? (
+                      {astraPayBindingUrl ? (
+                        <>
+                          <div className="flex items-center justify-center gap-2 mb-2">
+                            <div className="w-2 h-2 bg-yellow-300 rounded-full animate-pulse" />
+                            <p className="text-sm text-blue-100 font-medium">Hubungkan akun AstraPay dulu</p>
+                          </div>
+                          <p className="text-[10px] text-blue-200 text-center">
+                            Selesaikan registrasi di tab AstraPay. Pembayaran otomatis dilanjutkan setelah terhubung.
+                          </p>
+                        </>
+                      ) : astraPayUrl ? (
                         <>
                           <div className="flex items-center justify-center gap-2 mb-2">
                             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -1019,12 +1132,19 @@ function CheckoutModal({
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                           </svg>
-                          <p className="text-sm text-blue-100">Membuat sesi pembayaran...</p>
+                          <p className="text-sm text-blue-100">Memeriksa akun AstraPay...</p>
                         </div>
                       )}
                     </div>
 
-                    {astraPayUrl && (
+                    {astraPayBindingUrl && (
+                      <a href={astraPayBindingUrl} target="_blank" rel="noopener noreferrer"
+                        className="w-full bg-yellow-500 hover:bg-yellow-400 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm"
+                      >
+                        Buka AstraPay — Daftar / Hubungkan <ArrowRight size={16} />
+                      </a>
+                    )}
+                    {astraPayUrl && !astraPayBindingUrl && (
                       <>
                         <a href={astraPayUrl} target="_blank" rel="noopener noreferrer"
                           className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm"
@@ -1241,8 +1361,8 @@ const DEMO_ORDERS_DATA = [
 ]
 
 const DEMO_BUYER_DATA = {
-  name: 'Budi Santoso',
-  phone: '+62 812-xxxx-4521',
+  name: 'Nabila Rahmadani',
+  phone: '085117323662',
   astraPoints: 350,
   loyaltyCards: [
     { store: 'Toko Rizky',     storeInitial: 'R', color: '#3B5BDB', stamps: 3, maxStamps: 10, reward: 'Gratis ongkir pembelian berikutnya' },
@@ -1363,8 +1483,8 @@ function PesananPanel({ isDemoMode }: { isDemoMode: boolean }) {
 
 // ── Akun Tab Panel ────────────────────────────────────────────────────────────
 
-function AkunPanel({ isDemoMode }: { isDemoMode: boolean }) {
-  const buyer = isDemoMode ? DEMO_BUYER_DATA : null
+function AkunPanel({ isDemoMode, isLinked, onLink }: { isDemoMode: boolean; isLinked: boolean; onLink: () => void }) {
+  const buyer = (isDemoMode || isLinked) ? DEMO_BUYER_DATA : null
   if (!buyer) {
     return (
       <div className="px-4 pt-4 pb-24 flex flex-col items-center justify-center min-h-[400px] text-center">
@@ -1373,7 +1493,7 @@ function AkunPanel({ isDemoMode }: { isDemoMode: boolean }) {
         </div>
         <p className="font-bold text-gray-900 mb-2">Hubungkan AstraPay</p>
         <p className="text-sm text-gray-500 mb-6 max-w-[240px]">Login dengan AstraPay untuk melihat profil dan loyalty card kamu.</p>
-        <button className="w-full bg-app-blue text-white font-bold py-4 rounded-2xl text-sm">
+        <button onClick={onLink} className="w-full bg-app-blue text-white font-bold py-4 rounded-2xl text-sm">
           Hubungkan AstraPay
         </button>
       </div>
@@ -1487,8 +1607,10 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
   const [notFound,         setNotFound]         = useState(false)
   const [search,           setSearch]           = useState('')
   const [categoryFilter,   setCategoryFilter]   = useState('all')
+  const [sortMode,         setSortMode]         = useState<'popular'|'newest'|'price_asc'|'price_desc'>('popular')
   const [wishlist,         setWishlist]         = useState<Set<string>>(new Set())
   const [isDemoMode,       setIsDemoMode]       = useState(false)
+  const [isLinked,         setIsLinked]         = useState(false)
   const [demoProgress,     setDemoProgress]     = useState<DemoProgress>('browse')
   const [toastVisible,     setToastVisible]     = useState(false)
   const [pointsBannerOpen, setPointsBannerOpen] = useState(true)
@@ -1598,10 +1720,19 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
   }
 
   const categories = ['all', ...Array.from(new Set(products.map((p) => p.category).filter(Boolean)))]
-  const filtered = products.filter((p) =>
-    (categoryFilter === 'all' || p.category === categoryFilter) &&
-    (p.name.toLowerCase().includes(search.toLowerCase()) || p.category.toLowerCase().includes(search.toLowerCase()))
-  )
+  const DEMO_SOLD: Record<string, number> = {}
+  products.forEach((p, i) => { DEMO_SOLD[p.id] = [124, 89, 67, 52, 43, 38, 31, 28, 22, 18, 12, 8][i] ?? 5 })
+  const filtered = products
+    .filter((p) =>
+      (categoryFilter === 'all' || p.category === categoryFilter) &&
+      (p.name.toLowerCase().includes(search.toLowerCase()) || p.category.toLowerCase().includes(search.toLowerCase()))
+    )
+    .sort((a, b) => {
+      if (sortMode === 'newest') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      if (sortMode === 'price_asc') return a.price - b.price
+      if (sortMode === 'price_desc') return b.price - a.price
+      return (DEMO_SOLD[b.id] ?? 0) - (DEMO_SOLD[a.id] ?? 0) // popular
+    })
   const cartTotalQty = cart.reduce((s, item) => s + item.quantity, 0)
 
   return (
@@ -1626,7 +1757,7 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
                 <p className="font-extrabold text-gray-900 text-base leading-tight">{seller.name}</p>
                 <span className="text-app-blue text-sm">✓</span>
               </div>
-              <p className="text-xs text-gray-400 truncate">Toko online · {seller.location || seller.platform}</p>
+              <p className="text-xs text-gray-400 truncate">Toko online · {seller.location?.match(/^\d+$/) ? seller.platform : (seller.location || seller.platform)}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -1649,7 +1780,7 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
           <span><strong className="text-gray-900">98%</strong> respon cepat</span>
         </div>
 
-        {pointsBannerOpen && (
+        {pointsBannerOpen && activeTab === 'beranda' && (
           <div className="bg-amber-50 rounded-xl px-3 py-2.5 flex items-center gap-2.5 mb-3">
             <div className="w-7 h-7 bg-astrapay-gold rounded-lg flex items-center justify-center flex-shrink-0">
               <Star size={14} className="text-white" fill="currentColor" />
@@ -1677,31 +1808,32 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
             />
           )}
 
-          {categories.length > 2 && (
-            <div className="px-4 pt-3">
-              <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-                {categories.map((cat) => (
-                  <button key={cat} onClick={() => setCategoryFilter(cat)}
-                    className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${categoryFilter === cat ? 'bg-app-blue text-white border-app-blue' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+          <div className="px-4 pt-3">
+            <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+              {([
+                { key: 'popular',    label: 'Produk Populer' },
+                { key: 'newest',     label: 'Baru Ditambahkan' },
+                { key: sortMode === 'price_asc' ? 'price_desc' : 'price_asc', label: sortMode === 'price_asc' ? 'Harga: Tinggi ↓' : sortMode === 'price_desc' ? 'Harga: Rendah ↑' : 'Sorting Harga' },
+              ] as { key: typeof sortMode; label: string }[]).map(({ key, label }) => {
+                const isActive = key === 'price_asc' || key === 'price_desc'
+                  ? sortMode === 'price_asc' || sortMode === 'price_desc'
+                  : sortMode === key
+                return (
+                  <button key={key} onClick={() => setSortMode(key)}
+                    className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-colors ${isActive ? 'bg-app-blue text-white border-app-blue' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
                   >
-                    {cat === 'all' ? 'Semua' : cat}
+                    {label}
                   </button>
-                ))}
-              </div>
+                )
+              })}
             </div>
-          )}
+          </div>
 
           <div ref={productsRef} className="px-4 pt-4 pb-2 flex items-center justify-between">
             <p className="font-extrabold text-gray-900 text-base">
-              {search ? 'Hasil Pencarian' : categoryFilter !== 'all' ? categoryFilter : 'Produk Terlaris'}
+              {search ? 'Hasil Pencarian' : sortMode === 'newest' ? 'Baru Ditambahkan' : sortMode === 'price_asc' ? 'Harga Terendah' : sortMode === 'price_desc' ? 'Harga Tertinggi' : 'Produk Terlaris'}
             </p>
-            {!search && categoryFilter !== 'all' ? (
-              <button onClick={() => setCategoryFilter('all')} className="text-xs text-app-blue font-semibold flex items-center gap-1">
-                Lihat semua <ArrowRight size={12} />
-              </button>
-            ) : !search ? (
-              <span className="text-xs text-gray-400">{filtered.length} produk</span>
-            ) : null}
+            <span className="text-xs text-gray-400">{filtered.length} produk</span>
           </div>
 
           <div className="px-4 pb-24">
@@ -1714,7 +1846,7 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
                     </div>
                     <p className="font-semibold text-gray-700 mb-1">Produk tidak ditemukan</p>
                     <p className="text-gray-400 text-sm mb-5">Coba kata kunci lain atau hapus filter.</p>
-                    <button onClick={() => { setSearch(''); setCategoryFilter('all') }}
+                    <button onClick={() => { setSearch(''); setSortMode('popular') }}
                       className="text-app-blue text-sm font-semibold border border-app-blue/30 px-4 py-2 rounded-xl hover:bg-app-blue-pale transition-colors"
                     >
                       Hapus filter
@@ -1735,20 +1867,34 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
                 {filtered.map((product, index) => {
                   const { color, Icon } = getCategoryStyle(product.category)
                   const isBestSeller = isDemoMode && index === 0
-                  const soldCount = [124, 89, 67, 52, 43, 38][index % 6]
+                  const soldCount = DEMO_SOLD[product.id] ?? 5
                   return (
                     <div key={product.id}
                       className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm animate-fadein cursor-pointer group"
                       style={{ animationDelay: `${index * 50}ms` }}
                       onClick={() => setPreviewProduct(product)}
                     >
-                      <div className="relative flex items-center justify-center py-7 transition-opacity group-hover:opacity-90" style={{ backgroundColor: color }}>
-                        <Icon size={40} className="text-white transition-transform group-hover:scale-110 duration-200" />
+                      <div className="relative overflow-hidden transition-opacity group-hover:opacity-90" style={{ backgroundColor: color }}>
+                        {product.image_url ? (
+                          <img
+                            src={product.image_url}
+                            alt={product.name}
+                            className="w-full h-36 object-cover transition-transform group-hover:scale-105 duration-300"
+                            onError={(e) => {
+                              const target = e.currentTarget
+                              target.style.display = 'none'
+                              target.nextElementSibling?.classList.remove('hidden')
+                            }}
+                          />
+                        ) : null}
+                        <div className={`flex items-center justify-center py-7 ${product.image_url ? 'hidden' : ''}`}>
+                          <Icon size={40} className="text-white transition-transform group-hover:scale-110 duration-200" />
+                        </div>
                         {isBestSeller && (
                           <div className="absolute top-2 left-2 bg-astrapay-gold text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">🔥 TERLARIS</div>
                         )}
                         <button aria-label="Favorit" onClick={(e) => { e.stopPropagation(); toggleWishlist(product.id) }}
-                          className="absolute top-2 right-2 w-6 h-6 bg-white/20 rounded-full flex items-center justify-center"
+                          className="absolute top-2 right-2 w-6 h-6 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center"
                         >
                           <Star size={12} className={wishlist.has(product.id) ? 'text-yellow-300' : 'text-white'} fill={wishlist.has(product.id) ? 'currentColor' : 'none'} />
                         </button>
@@ -1770,16 +1916,6 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
             )}
           </div>
 
-          {seller.whatsapp && (
-            <div className="px-4 pb-4">
-              <a href={`https://wa.me/${seller.whatsapp.replace(/^0/, '62').replace(/\s/g, '')}?text=${encodeURIComponent(`Halo, aku mau tanya soal produk di ${seller.name}`)}`}
-                target="_blank" rel="noopener noreferrer"
-                className="w-full bg-[#25D366] hover:bg-[#1fb85a] text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm"
-              >
-                <MessageCircle size={16} /> Chat Penjual via WhatsApp
-              </a>
-            </div>
-          )}
 
           <div className="px-4 py-6 text-center pb-24">
             <p className="text-xs text-gray-400">Toko ini dikelola dengan <Link href="/" className="text-app-blue font-medium">AstraToko</Link> · Powered by AstraPay</p>
@@ -1801,7 +1937,7 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
       {activeTab === 'pesanan' && <PesananPanel isDemoMode={isDemoMode} />}
 
       {/* ── Akun tab ── */}
-      {activeTab === 'akun' && <AkunPanel isDemoMode={isDemoMode} />}
+      {activeTab === 'akun' && <AkunPanel isDemoMode={isDemoMode} isLinked={isLinked} onLink={() => setIsLinked(true)} />}
 
       {/* Bottom nav */}
       <BottomNav
@@ -1842,6 +1978,8 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
           onRemove={removeFromCart}
           onUpdateQty={updateQuantity}
           isDemoMode={isDemoMode}
+          isLinked={isLinked}
+          onLink={() => setIsLinked(true)}
           onDemoProgress={setDemoProgress}
         />
       )}

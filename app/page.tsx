@@ -1,58 +1,64 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import {
-  ArrowRight, Check, ChevronDown, Zap, Star, Users,
-  TrendingUp, MessageCircle, Package, CreditCard, Bot, Bell,
+  ArrowRight,
+  Check,
+  ChevronDown,
+  UploadCloud,
+  Store,
+  CreditCard,
+  Users,
+  Zap,
+  Package,
+  Star,
+  ShieldCheck,
+  Bell,
+  Share2,
+  TrendingUp,
 } from 'lucide-react'
 import { formatRp, formatRpShort } from '@/lib/utils'
 
-// ── Utilities ─────────────────────────────────────────────────────────────────
+// ── Utility ───────────────────────────────────────────────────────────────────
 
-function useCountUp(target: number, duration = 1400, active = true) {
+function useCountUp(target: number, duration = 1200) {
   const [count, setCount] = useState(0)
   useEffect(() => {
-    if (!active || target === 0) { setCount(0); return }
-    let id: number
+    if (target === 0) { setCount(0); return }
+    let animId: number
     const start = Date.now()
     const tick = () => {
-      const t = Math.min((Date.now() - start) / duration, 1)
-      setCount(Math.round(target * (1 - Math.pow(1 - t, 3))))
-      if (t < 1) id = requestAnimationFrame(tick)
+      const elapsed = Date.now() - start
+      const progress = Math.min(elapsed / duration, 1)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      setCount(Math.round(target * eased))
+      if (progress < 1) animId = requestAnimationFrame(tick)
     }
-    id = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(id)
-  }, [target, duration, active])
+    animId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(animId)
+  }, [target, duration])
   return count
 }
 
-function useInView(threshold = 0.25) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [inView, setInView] = useState(false)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) setInView(true) }, { threshold })
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [threshold])
-  return { ref, inView }
-}
+// ── Phone Mockup ─────────────────────────────────────────────────────────────
 
-// ── Hero Phone Mockup ─────────────────────────────────────────────────────────
-
-const HERO_ORDERS = [
-  { initial: 'A', name: 'Order baru masuk',    product: 'Brake Pad',      amount: 'Rp 85.000'  },
-  { initial: 'B', name: 'Pembayaran berhasil', product: 'Helm Half Face', amount: 'Rp 185.000' },
-  { initial: 'C', name: 'Repeat customer',     product: 'Oli Federal',    amount: 'Rp 52.000'  },
+const MINI_PRODUCTS = [
+  { name: 'Produk Terlaris', price: 'Rp 85.000', color: '#3B5BDB', badge: '🔥' },
+  { name: 'Pilihan Terbaik', price: 'Rp 52.000', color: '#2F9E44', badge: '⭐' },
+  { name: 'Stok Terbatas',   price: 'Rp 185.000', color: '#E67700', badge: '⚡' },
+  { name: 'Produk Baru',     price: 'Rp 45.000',  color: '#7048E8', badge: '✨' },
 ]
 
-function HeroPhone() {
-  const [toastIdx,   setToastIdx]   = useState(0)
+const TOAST_ORDERS = [
+  { buyer: 'Dua Lipa',          product: 'Kampas Rem Premium', amount: 'Rp 85.000'  },
+  { buyer: 'Sabrina Carpenter', product: 'Helm SNI Full Face',  amount: 'Rp 185.000' },
+  { buyer: 'Justin Bieber',     product: 'Oli Motor Federal',   amount: 'Rp 52.000'  },
+]
+
+function PhoneMockup() {
+  const [toastIdx, setToastIdx]     = useState(0)
   const [toastPhase, setToastPhase] = useState<'in' | 'out' | 'hidden'>('hidden')
-  const [revenue,    setRevenue]    = useState(1_250_000)
-  const [orderCount, setOrderCount] = useState(7)
 
   useEffect(() => {
     const show = () => {
@@ -60,108 +66,87 @@ function HeroPhone() {
       setTimeout(() => setToastPhase('out'), 2600)
       setTimeout(() => {
         setToastPhase('hidden')
-        setToastIdx(i => {
-          const next = (i + 1) % HERO_ORDERS.length
-          const order = HERO_ORDERS[next]
-          const parsed = parseInt(order.amount.replace(/\D/g, ''))
-          setRevenue(v => v + parsed)
-          setOrderCount(c => c + 1)
-          return next
-        })
-      }, 3100)
+        setToastIdx((i) => (i + 1) % TOAST_ORDERS.length)
+      }, 3000)
     }
-    const t = setTimeout(show, 1200)
-    const iv = setInterval(show, 4500)
-    return () => { clearTimeout(t); clearInterval(iv) }
+    const initial = setTimeout(show, 1200)
+    const interval = setInterval(show, 4500)
+    return () => { clearTimeout(initial); clearInterval(interval) }
   }, [])
 
-  const toast = HERO_ORDERS[toastIdx]
+  const toast = TOAST_ORDERS[toastIdx]
 
   return (
-    <div className="relative mx-auto w-[240px] select-none">
-      {/* Notification toast */}
+    <div className="relative mx-auto w-[220px] md:w-[260px] animate-float">
       {toastPhase !== 'hidden' && (
-        <div className={`absolute -top-5 -right-14 z-20 bg-white rounded-2xl shadow-2xl border border-gray-100 px-3 py-2.5 flex items-center gap-2 min-w-[190px] transition-all duration-300 ${toastPhase === 'in' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}>
-          <div className="w-7 h-7 bg-green-500 rounded-xl flex items-center justify-center flex-shrink-0">
-            <Check size={13} className="text-white" strokeWidth={3} />
+        <div className={`absolute -top-5 -right-10 z-20 bg-white rounded-2xl shadow-2xl shadow-gray-900/15 border border-gray-100 px-3.5 py-2.5 flex items-center gap-2.5 min-w-[170px] ${toastPhase === 'in' ? 'animate-toast-in' : 'animate-toast-out'}`}>
+          <div className="w-8 h-8 bg-green-500 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Check size={14} className="text-white" strokeWidth={3} />
           </div>
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold text-gray-900 truncate">{toast.name}</p>
-            <p className="text-[10px] text-green-600 font-semibold">{toast.amount} · AstraPay</p>
+          <div>
+            <p className="text-[10px] font-bold text-gray-900 leading-none mb-0.5">{toast.buyer} beli {toast.product}</p>
+            <p className="text-[10px] text-green-600 font-semibold leading-none">{toast.amount} masuk ✓</p>
           </div>
         </div>
       )}
 
-      {/* Phone shell */}
-      <div className="bg-gray-900 rounded-[2.8rem] p-2.5 shadow-2xl shadow-blue-900/25 ring-1 ring-white/10">
-        <div className="bg-white rounded-[2.35rem] overflow-hidden min-h-[460px]">
-          {/* Notch */}
-          <div className="bg-gray-900 h-6 flex items-center justify-center">
-            <div className="w-14 h-3.5 bg-gray-800 rounded-full" />
-          </div>
+      <div className="absolute -bottom-6 -left-10 z-20 bg-app-blue rounded-2xl shadow-xl px-3.5 py-2.5 text-white min-w-[140px]">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <Zap size={10} className="text-astrapay-gold" fill="currentColor" />
+          <p className="text-[9px] text-blue-300 font-semibold uppercase tracking-wide">AstraPay</p>
+        </div>
+        <p className="text-xs font-extrabold leading-none">Pembayaran Berhasil</p>
+        <p className="text-[10px] text-green-400 mt-0.5 font-semibold">{toast.amount} ✓</p>
+      </div>
 
-          {/* Store header */}
+      <div className="bg-gray-900 rounded-[2.8rem] p-2.5 shadow-2xl shadow-blue-900/30 ring-1 ring-white/10">
+        <div className="bg-white rounded-[2.35rem] overflow-hidden">
+          <div className="bg-gray-900 h-7 flex items-center justify-center">
+            <div className="w-16 h-4 bg-gray-800 rounded-full" />
+          </div>
           <div className="bg-app-blue px-3 pt-3 pb-3">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-extrabold text-xs">✦</span>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                <span className="text-white font-extrabold text-xs leading-none">✦</span>
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-1">
+                  <p className="text-white font-extrabold text-[11px] leading-none">Toko Kamu</p>
+                  <span className="text-blue-300 text-[10px]">✓</span>
                 </div>
-                <div>
-                  <p className="text-white font-extrabold text-[11px]">Toko Rizky</p>
-                  <div className="flex items-center gap-1">
-                    <div className="w-1 h-1 bg-green-400 rounded-full animate-pulse" />
-                    <p className="text-green-300 text-[8px] font-semibold">Aktif</p>
+                <p className="text-blue-200 text-[8px] mt-0.5">4.9 ★ · 12 produk</p>
+              </div>
+            </div>
+            <div className="bg-white/15 rounded-lg px-2 py-1.5 flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded-full border border-blue-300 opacity-60" />
+              <p className="text-blue-200 text-[8px]">Cari produk...</p>
+            </div>
+          </div>
+          <div className="bg-amber-50 px-3 py-2 flex items-center gap-1.5 border-b border-amber-100">
+            <Star size={10} className="text-astrapay-gold flex-shrink-0" fill="currentColor" />
+            <p className="text-[8px] text-amber-800 font-semibold">+50 poin tiap transaksi via AstraPay</p>
+          </div>
+          <div className="p-2 grid grid-cols-2 gap-1.5">
+            {MINI_PRODUCTS.map((p, i) => (
+              <div key={i} className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
+                <div className="h-10 flex items-center justify-center relative" style={{ backgroundColor: p.color + '20' }}>
+                  <div className="w-4 h-4 rounded-md" style={{ backgroundColor: p.color }} />
+                  <span className="absolute top-0.5 left-0.5 text-[8px] leading-none">{p.badge}</span>
+                </div>
+                <div className="p-1.5">
+                  <p className="text-[7px] font-semibold text-gray-800 leading-tight truncate mb-0.5">{p.name}</p>
+                  <p className="text-[8px] font-extrabold text-app-blue">{p.price}</p>
+                  <div className="mt-1 bg-app-blue rounded py-0.5 text-center">
+                    <p className="text-white text-[6px] font-bold">+ Beli</p>
                   </div>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="text-blue-200 text-[8px]">Hari ini</p>
-                <p className="text-white font-extrabold text-[13px]">{formatRpShort(revenue)}</p>
-              </div>
-            </div>
-            {/* Mini KPI row */}
-            <div className="flex gap-1.5">
-              <div className="flex-1 bg-white/10 rounded-xl px-2 py-1.5 text-center">
-                <p className="text-white font-extrabold text-sm leading-none">{orderCount}</p>
-                <p className="text-blue-200 text-[8px] mt-0.5">Order</p>
-              </div>
-              <div className="flex-1 bg-white/10 rounded-xl px-2 py-1.5 text-center">
-                <p className="text-white font-extrabold text-sm leading-none">3</p>
-                <p className="text-blue-200 text-[8px] mt-0.5">Repeat</p>
-              </div>
-              <div className="flex-1 bg-white/10 rounded-xl px-2 py-1.5 text-center">
-                <p className="text-white font-extrabold text-sm leading-none">QRIS</p>
-                <p className="text-blue-200 text-[8px] mt-0.5">Aktif</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Products */}
-          <div className="p-2.5">
-            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-widest mb-2">Produk Terlaris</p>
-            {[
-              { name: 'Brake Pad XYZ',   price: 'Rp 85.000',  color: '#3B5BDB', sold: 24 },
-              { name: 'Oli Federal 1L',  price: 'Rp 52.000',  color: '#2F9E44', sold: 19 },
-              { name: 'Helm Half Face',  price: 'Rp 185.000', color: '#E67700', sold: 12 },
-            ].map((p, i) => (
-              <div key={i} className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: p.color + '22' }}>
-                  <div className="w-3 h-3 rounded" style={{ backgroundColor: p.color }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[9px] font-semibold text-gray-800 truncate">{p.name}</p>
-                  <p className="text-[9px] font-extrabold text-app-blue">{p.price}</p>
-                </div>
-                <p className="text-[8px] text-gray-400 font-medium">{p.sold} terjual</p>
-              </div>
             ))}
-
-            {/* AI Insight strip */}
-            <div className="mt-2 bg-violet-50 border border-violet-100 rounded-xl px-2.5 py-2 flex items-start gap-1.5">
-              <Bot size={9} className="text-violet-500 mt-0.5 flex-shrink-0" />
-              <p className="text-[8px] text-violet-700 leading-relaxed">
-                3 pembeli Brake Pad belum beli Oli. Buat bundle.
+          </div>
+          <div className="px-2 pb-3">
+            <div className="bg-gray-50 rounded-xl px-2 py-1.5 text-center">
+              <p className="text-[7px] text-gray-400">
+                Dikelola dengan <span className="text-app-blue font-semibold">AstraToko</span>
               </p>
             </div>
           </div>
@@ -171,301 +156,245 @@ function HeroPhone() {
   )
 }
 
-// ── How It Works ──────────────────────────────────────────────────────────────
+// ── Interactive Demo ──────────────────────────────────────────────────────────
 
-const HOW_STEPS = [
-  {
-    num: 1,
-    icon: Package,
-    title: 'Import produk',
-    desc: 'Upload CSV dari Shopee, Tokopedia, atau TikTok. Semua produk langsung live.',
-  },
-  {
-    num: 2,
-    icon: CreditCard,
-    title: 'QRIS & AstraPay aktif',
-    desc: 'Pelanggan langsung bisa bayar. Tanpa setup tambahan.',
-  },
-  {
-    num: 3,
-    icon: Bell,
-    title: 'Order pertama masuk',
-    desc: 'Data pelanggan (nama, nomor, riwayat) langsung tersimpan milikmu.',
-  },
-  {
-    num: 4,
-    icon: Users,
-    title: 'Pelanggan kembali langsung',
-    desc: 'Bukan lewat marketplace. Tidak ada komisi ulang.',
-  },
-]
+type DemoState = 'idle' | 'analyzing' | 'done'
 
-function HowItWorks() {
-  const { ref, inView } = useInView(0.15)
-  return (
-    <div ref={ref} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-      {HOW_STEPS.map((step, i) => {
-        const Icon = step.icon
-        return (
-          <div key={i} className={`transition-all duration-500 ${inView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}
-            style={{ transitionDelay: `${i * 80}ms` }}>
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 bg-app-blue rounded-xl flex items-center justify-center flex-shrink-0">
-                <Icon size={14} className="text-white" />
-              </div>
-              {i < HOW_STEPS.length - 1 && (
-                <div className="flex-1 h-px bg-gray-200 hidden lg:block" />
-              )}
-            </div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{step.num}</p>
-            <p className="text-sm font-extrabold text-gray-900 mb-1">{step.title}</p>
-            <p className="text-xs text-gray-500 leading-relaxed">{step.desc}</p>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
+function InteractiveDemo() {
+  const [state, setState] = useState<DemoState>('idle')
+  const productCount = useCountUp(state === 'done' ? 186 : 0, 900)
 
-// ── Live Dashboard Preview ────────────────────────────────────────────────────
-
-const DASH_ORDERS = [
-  { initial: 'A', product: 'Brake Pad XYZ',      amount: 'Rp 85.000',  time: '2m lalu'  },
-  { initial: 'B', product: 'Helm Half Face SNI', amount: 'Rp 185.000', time: '14m lalu' },
-  { initial: 'C', product: 'Oli Federal 1L',     amount: 'Rp 52.000',  time: '1j lalu'  },
-]
-
-function LiveDashboard() {
-  const { ref, inView } = useInView(0.2)
-  const [aiVisible, setAiVisible] = useState(false)
-  const revenue = useCountUp(4_850_000, 1800, inView)
-  const savings  = useCountUp(875_000,  1400, inView)
-
-  useEffect(() => {
-    if (!inView) return
-    const t = setTimeout(() => setAiVisible(true), 2200)
-    return () => clearTimeout(t)
-  }, [inView])
+  function startDemo() {
+    if (state !== 'idle') return
+    setState('analyzing')
+    setTimeout(() => setState('done'), 2200)
+  }
 
   return (
-    <div ref={ref} className={`transition-all duration-600 ${inView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-      <div className="bg-gray-950 rounded-2xl p-5 border border-white/5">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-app-blue rounded-xl flex items-center justify-center flex-shrink-0">
-              <span className="text-white font-extrabold text-xs">R</span>
-            </div>
-            <div>
-              <p className="text-white font-bold text-[11px]">Toko Rizky</p>
-              <p className="text-gray-500 text-[9px]">Dashboard</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 text-[9px] text-green-400 font-bold bg-green-400/10 px-2.5 py-1 rounded-full">
-            <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> Live
-          </div>
+    <div className="bg-white rounded-2xl border border-white/20 shadow-2xl overflow-hidden">
+      <div className="bg-gray-100/80 border-b border-gray-200 px-4 py-2.5 flex items-center gap-2">
+        <div className="flex gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
+          <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
+          <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
         </div>
-
-        {/* KPIs */}
-        <div className="bg-gray-900/80 rounded-xl p-4 mb-3 grid grid-cols-3 gap-3">
+        <span className="text-[11px] text-gray-400 ml-1">astratoko.com/import</span>
+      </div>
+      <div className="p-6">
+        {state === 'idle' && (
+          <div className="text-center">
+            <div className="w-14 h-14 bg-app-blue rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <UploadCloud size={26} className="text-white" />
+            </div>
+            <p className="font-bold text-gray-900 mb-1">Upload CSV Katalogmu</p>
+            <p className="text-sm text-gray-400 mb-1">Shopee · Tokopedia · TikTok Shop</p>
+            <p className="text-xs text-gray-300 mb-5">Estimasi setup &lt; 10 menit</p>
+            <button onClick={startDemo} className="btn-primary text-sm py-2.5 px-5 inline-flex items-center gap-2">
+              <UploadCloud size={15} /> Coba Import Demo
+            </button>
+          </div>
+        )}
+        {state === 'analyzing' && (
+          <div className="text-center py-4">
+            <div className="w-12 h-12 bg-app-blue-pale rounded-xl flex items-center justify-center mx-auto mb-4">
+              <div className="w-5 h-5 border-2 border-app-blue border-t-transparent rounded-full animate-spin" />
+            </div>
+            <p className="font-semibold text-gray-900 mb-1">Membaca katalog...</p>
+            <p className="text-sm text-gray-400">Menganalisis produk, harga, dan stok</p>
+            <div className="mt-5 space-y-2">
+              <div className="h-3 bg-gray-100 rounded-full animate-pulse" />
+              <div className="h-3 bg-gray-100 rounded-full animate-pulse w-4/5 mx-auto" />
+              <div className="h-3 bg-gray-100 rounded-full animate-pulse w-3/5 mx-auto" />
+            </div>
+          </div>
+        )}
+        {state === 'done' && (
           <div>
-            <p className="text-[8px] text-gray-600 uppercase tracking-widest font-bold mb-1">GMV Bulan Ini</p>
-            <p className="text-xl font-extrabold text-white leading-none">{formatRpShort(revenue)}</p>
-          </div>
-          <div>
-            <p className="text-[8px] text-gray-600 uppercase tracking-widest font-bold mb-1">Fee Dihindari</p>
-            <p className="text-xl font-extrabold text-green-400 leading-none">+{formatRpShort(savings)}</p>
-          </div>
-          <div>
-            <p className="text-[8px] text-gray-600 uppercase tracking-widest font-bold mb-1">Repeat Buyer</p>
-            <p className="text-xl font-extrabold text-purple-400 leading-none">67%</p>
-          </div>
-        </div>
-
-        {/* Orders */}
-        <div className="bg-white/[0.03] border border-white/5 rounded-xl overflow-hidden mb-3">
-          <div className="px-3 py-2 border-b border-white/5">
-            <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Pesanan Terbaru</p>
-          </div>
-          {DASH_ORDERS.map((o, i) => (
-            <div key={i}
-              className={`flex items-center gap-2.5 px-3 py-2.5 border-b border-white/[0.04] last:border-0 transition-all duration-500 ${inView ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'}`}
-              style={{ transitionDelay: `${i * 150 + 300}ms` }}>
-              <div className="w-7 h-7 bg-gray-700 rounded-lg flex items-center justify-center flex-shrink-0">
-                <span className="text-gray-300 font-bold text-[10px]">{o.initial}</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-semibold text-gray-200 truncate">{o.product}</p>
-                <p className="text-[9px] text-gray-500">{o.time}</p>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <p className="text-[11px] font-bold text-gray-200">{o.amount}</p>
-                <span className="text-[8px] font-bold text-green-400">Lunas</span>
-              </div>
+            <div className="flex items-center gap-2 text-green-600 text-xs font-medium mb-4">
+              <Check size={13} />
+              <span>Import selesai · katalog-demo.csv</span>
             </div>
-          ))}
-        </div>
-
-        {/* AI Insight - animates in after delay */}
-        <div className={`bg-violet-950/60 border border-violet-800/40 rounded-xl p-3 transition-all duration-700 ${aiVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`}>
-          <div className="flex items-center gap-2 mb-1.5">
-            <div className="w-5 h-5 bg-violet-600 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Bot size={10} className="text-white" />
+            <div className="bg-app-blue rounded-2xl p-4 text-center mb-3">
+              <p className="text-blue-200 text-xs mb-1">Produk berhasil diimport</p>
+              <p className="text-5xl font-extrabold text-white tracking-tight leading-none mb-1">{productCount}</p>
+              <p className="text-blue-200 text-xs">produk siap dijual</p>
             </div>
-            <p className="text-[9px] font-bold text-violet-300 uppercase tracking-wide">AI tahu siapa yang harus kamu follow-up hari ini</p>
+            <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-3">
+              <div className="flex items-center justify-between mb-0.5">
+                <p className="text-[10px] text-green-600 font-medium">Toko langsung live dalam</p>
+                <span className="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">QRIS aktif ✓</span>
+              </div>
+              <p className="text-2xl font-extrabold text-green-700 leading-none">kurang dari 10 menit</p>
+              <p className="text-[10px] text-green-500 mt-1 font-mono">astratoko.com/nama-toko-kamu</p>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 mb-4">
+              {['Harga ✓', 'Stok ✓', 'Kategori ✓', 'AstraPay ✓'].map((item) => (
+                <div key={item} className="bg-gray-50 rounded-lg px-3 py-1.5 text-[11px] font-semibold text-gray-600 text-center">{item}</div>
+              ))}
+            </div>
+            <Link href="/toko/tokorizky?demo=true" className="btn-primary w-full flex items-center justify-center gap-2 text-sm py-3">
+              Lihat Demo Toko <ArrowRight size={15} />
+            </Link>
+            <button onClick={() => setState('idle')} className="w-full text-center text-[11px] text-gray-400 hover:text-gray-600 mt-3">
+              Reset demo
+            </button>
           </div>
-          <p className="text-[10px] text-gray-300 leading-relaxed">
-            4 pelanggan tidak aktif 30+ hari. Nomor WhatsApp tersimpan.
-            <span className="text-white font-semibold"> Hubungi sekarang →</span>
-          </p>
-        </div>
+        )}
       </div>
     </div>
   )
 }
 
-// ── AI Recommendation Cards ───────────────────────────────────────────────────
+// ── Dashboard Preview ─────────────────────────────────────────────────────────
 
-const AI_CARDS = [
-  {
-    icon: MessageCircle,
-    iconColor: 'text-violet-600',
-    iconBg: 'bg-violet-50',
-    tag: 'Retensi',
-    tagColor: 'text-violet-600',
-    title: '4 pelanggan belum kembali.',
-    body: 'Nomor WhatsApp mereka tersimpan di databasemu. Di marketplace, kamu tidak punya akses ini.',
-    impact: '+28% recovery rate',
-    impactColor: 'bg-violet-50 text-violet-700',
-  },
-  {
-    icon: Package,
-    iconColor: 'text-violet-600',
-    iconBg: 'bg-violet-50',
-    tag: 'Cross-sell',
-    tagColor: 'text-violet-600',
-    title: 'Pembeli Brake Pad belum beli Oli.',
-    body: 'Buat bundle. Rata-rata order value naik 38% dengan satu penawaran.',
-    impact: 'Est. +Rp 208.000',
-    impactColor: 'bg-violet-50 text-violet-700',
-  },
-  {
-    icon: Star,
-    iconColor: 'text-violet-600',
-    iconBg: 'bg-violet-50',
-    tag: 'VIP',
-    tagColor: 'text-violet-600',
-    title: '2 pelanggan sudah 3+ order.',
-    body: 'Kirim reward eksklusif langsung via WhatsApp. Tidak perlu marketplace jadi perantara.',
-    impact: 'Retensi naik 40%',
-    impactColor: 'bg-violet-50 text-violet-700',
-  },
+const PREVIEW_ORDERS = [
+  { buyer: 'Dua Lipa',          product: 'Kampas Rem Premium', amount: 'Rp 85.000',  time: '2m lalu',  color: '#3B5BDB' },
+  { buyer: 'Justin Bieber',     product: 'Oli Motor Federal',  amount: 'Rp 52.000',  time: '14m lalu', color: '#2F9E44' },
+  { buyer: 'Sabrina Carpenter', product: 'Helm SNI Full Face', amount: 'Rp 185.000', time: '1j lalu',  color: '#E67700' },
 ]
 
-function AICards() {
-  const { ref, inView } = useInView(0.15)
+function DashboardPreview() {
+  const animSavings = useCountUp(875_000,   1400)
+  const animRevenue = useCountUp(4_850_000, 1800)
   return (
-    <div ref={ref} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {AI_CARDS.map((card, i) => {
-        const Icon = card.icon
-        return (
-          <div key={i}
-            className={`bg-white border border-gray-100 rounded-2xl p-5 shadow-sm transition-all duration-500 ${inView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}
-            style={{ transitionDelay: `${i * 80}ms` }}>
-            <div className="flex items-center gap-2 mb-4">
-              <div className={`w-7 h-7 ${card.iconBg} rounded-lg flex items-center justify-center flex-shrink-0`}>
-                <Icon size={14} className={card.iconColor} />
-              </div>
-              <span className={`text-[10px] font-bold uppercase tracking-widest ${card.tagColor}`}>{card.tag}</span>
+    <div className="bg-gray-900 rounded-2xl p-5 shadow-2xl border border-white/5">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-app-blue rounded-xl flex items-center justify-center flex-shrink-0">
+            <span className="text-white font-extrabold text-xs">R</span>
+          </div>
+          <div>
+            <p className="text-white font-bold text-xs">Toko Rizky</p>
+            <p className="text-gray-500 text-[10px]">Dashboard</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 text-[10px] text-green-400 font-medium bg-green-400/10 px-2 py-1 rounded-full">
+          <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />Live
+        </div>
+      </div>
+
+      {/* Business Health */}
+      <div className="bg-gray-950 rounded-xl p-4 mb-3">
+        <p className="text-[9px] text-gray-600 uppercase tracking-widest font-bold mb-1">Efisiensi Biaya Langsung</p>
+        <p className="text-3xl font-extrabold text-white tracking-tight leading-none mb-1">{formatRpShort(animSavings)}</p>
+        <p className="text-[10px] text-green-400 flex items-center gap-1">
+          <TrendingUp size={9} /> margin direct channel bulan ini
+        </p>
+        <div className="grid grid-cols-3 gap-2 mt-3">
+          {[
+            { label: 'Direct Sales',  value: formatRpShort(animRevenue) },
+            { label: 'Pesanan',       value: '9 ✓'                      },
+            { label: 'Repeat Buyer',  value: '67%'                      },
+          ].map((m) => (
+            <div key={m.label} className="bg-white/5 rounded-lg p-2">
+              <p className="text-[8px] text-gray-600 uppercase tracking-wide font-bold mb-0.5">{m.label}</p>
+              <p className="text-xs font-extrabold text-white">{m.value}</p>
             </div>
-            <p className="text-sm font-extrabold text-gray-900 mb-1.5 leading-snug">{card.title}</p>
-            <p className="text-xs text-gray-500 leading-relaxed mb-4">{card.body}</p>
-            <div className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full ${card.impactColor}`}>
-              <TrendingUp size={10} /> {card.impact}
+          ))}
+        </div>
+      </div>
+
+      {/* Recent orders */}
+      <div className="bg-white/[0.03] border border-white/5 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-white/5">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pesanan Terbaru</p>
+          <div className="flex items-center gap-1 text-[9px] text-gray-600 font-medium">
+            <Bell size={8} /> real-time
+          </div>
+        </div>
+        {PREVIEW_ORDERS.map((order, i) => (
+          <div key={i} className="flex items-center gap-2.5 px-3 py-2.5 border-b border-white/[0.04] last:border-0">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 text-white font-extrabold text-[9px]" style={{ backgroundColor: order.color }}>
+              {order.buyer.charAt(0)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-semibold text-gray-200 truncate">{order.product}</p>
+              <p className="text-[9px] text-gray-500">{order.buyer} · {order.time}</p>
+            </div>
+            <div className="text-right flex-shrink-0">
+              <p className="text-[11px] font-bold text-gray-200">{order.amount}</p>
+              <span className="text-[8px] font-bold text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded-full">Lunas</span>
             </div>
           </div>
-        )
-      })}
+        ))}
+      </div>
     </div>
   )
 }
 
 // ── Savings Calculator ────────────────────────────────────────────────────────
 
-const PLATFORMS = [
-  { key: 'Tokopedia', fee: 0.22 },
-  { key: 'Shopee',    fee: 0.20 },
-  { key: 'TikTok',   fee: 0.25 },
+const PLATFORM_FEES = [
+  { key: 'Tokopedia', fee: 0.22, emoji: '🟢' },
+  { key: 'Shopee',    fee: 0.20, emoji: '🟠' },
+  { key: 'TikTok',   fee: 0.25, emoji: '⚫' },
 ]
 
 function SavingsCalculator() {
-  const { ref, inView } = useInView(0.2)
   const [gmv,      setGmv]      = useState(20_000_000)
   const [platform, setPlatform] = useState('Tokopedia')
-  const feeRate   = PLATFORMS.find(p => p.key === platform)?.fee ?? 0.22
-  const feeMarket = Math.round(gmv * feeRate)
-  const feeAstra  = Math.round(gmv * 0.025)
-  const savings   = feeMarket - feeAstra
-  const animSavings = useCountUp(savings, 500, inView)
+  const presets = [5_000_000, 20_000_000, 50_000_000, 100_000_000]
+
+  const feeRate        = PLATFORM_FEES.find((p) => p.key === platform)?.fee ?? 0.22
+  const feeMarketplace = Math.round(gmv * feeRate)
+  const feeAstra       = Math.round(gmv * 0.025)
+  const savings        = feeMarketplace - feeAstra
 
   return (
-    <div ref={ref} className={`bg-white border border-gray-100 rounded-2xl p-7 shadow-sm transition-all duration-600 ${inView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-      {/* Platform toggle */}
-      <div className="flex gap-2 mb-6">
-        {PLATFORMS.map(p => (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-lg p-7">
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Simulasi Penghematan</p>
+
+      {/* Platform selector */}
+      <div className="flex gap-2 mb-5">
+        {PLATFORM_FEES.map((p) => (
           <button key={p.key} onClick={() => setPlatform(p.key)}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all border-2 ${platform === p.key ? 'border-app-blue bg-app-blue text-white' : 'border-gray-100 bg-gray-50 text-gray-500 hover:border-gray-200'}`}>
-            {p.key}
+            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all border-2 ${
+              platform === p.key
+                ? 'border-app-blue bg-app-blue text-white'
+                : 'border-gray-100 bg-gray-50 text-gray-600 hover:border-gray-200'
+            }`}
+          >
+            {p.emoji} {p.key}
           </button>
         ))}
       </div>
 
-      {/* GMV slider */}
-      <div className="mb-6">
+      <div className="mb-5">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-semibold text-gray-700">GMV per bulan</span>
+          <label className="text-sm font-semibold text-gray-700">GMV per bulan</label>
           <span className="text-base font-extrabold text-gray-900">{formatRp(gmv)}</span>
         </div>
-        <input type="range" min={5_000_000} max={100_000_000} step={1_000_000} value={gmv}
-          onChange={e => setGmv(Number(e.target.value))} className="w-full accent-app-blue" />
-        <div className="flex justify-between mt-1.5">
-          {[5, 20, 50, 100].map(v => (
-            <button key={v} onClick={() => setGmv(v * 1_000_000)}
-              className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${gmv === v * 1_000_000 ? 'bg-app-blue text-white' : 'text-gray-400 hover:text-gray-600'}`}>
-              {v}jt
+        <input
+          type="range" min={5_000_000} max={100_000_000} step={1_000_000} value={gmv}
+          onChange={(e) => setGmv(Number(e.target.value))}
+          className="w-full accent-app-blue"
+        />
+        <div className="flex justify-between mt-2">
+          {presets.map((p) => (
+            <button key={p} onClick={() => setGmv(p)}
+              className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${gmv === p ? 'bg-app-blue text-white' : 'text-gray-400 hover:text-gray-600'}`}>
+              {p / 1_000_000}jt
             </button>
           ))}
         </div>
       </div>
-
-      {/* Fee comparison */}
-      <div className="space-y-3 mb-5">
-        <div>
-          <div className="flex justify-between text-xs font-semibold mb-1.5">
-            <span className="text-gray-500">{platform} ({Math.round(feeRate * 100)}%)</span>
-            <span className="text-red-500">-{formatRpShort(feeMarket)}</span>
-          </div>
-          <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full bg-red-400 rounded-full transition-all duration-500" style={{ width: `${Math.round(feeRate * 100)}%` }} />
-          </div>
+      <div className="space-y-2 mb-4">
+        <div className="flex items-center justify-between bg-red-50 rounded-xl px-4 py-3">
+          <span className="text-sm text-gray-600">Biaya {platform} ({Math.round(feeRate * 100)}%)</span>
+          <span className="text-sm font-bold text-red-500">-{formatRp(feeMarketplace)}</span>
         </div>
-        <div>
-          <div className="flex justify-between text-xs font-semibold mb-1.5">
-            <span className="text-gray-500">AstraToko (2.5%)</span>
-            <span className="text-app-blue">-{formatRpShort(feeAstra)}</span>
-          </div>
-          <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full bg-app-blue rounded-full transition-all duration-500" style={{ width: '2.5%' }} />
-          </div>
+        <div className="flex items-center justify-between bg-blue-50 rounded-xl px-4 py-3">
+          <span className="text-sm text-gray-600">Fee AstraToko (2.5%)</span>
+          <span className="text-sm font-bold text-app-blue">-{formatRp(feeAstra)}</span>
         </div>
       </div>
-
-      {/* Savings result */}
-      <div className="bg-green-50 border border-green-100 rounded-2xl px-5 py-4">
-        <p className="text-xs text-green-600 font-semibold mb-1">Kamu hemat per bulan</p>
-        <p className="text-3xl font-extrabold text-green-700 tracking-tight">+{formatRp(animSavings)}</p>
-        <p className="text-xs text-green-500 mt-1">{formatRpShort(savings * 12)} per tahun</p>
+      <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-4">
+        <p className="text-xs text-green-600 font-medium mb-1">Potensi penghematan per bulan</p>
+        <p className="text-3xl font-extrabold text-green-700 tracking-tight">+{formatRp(savings)}</p>
+        <p className="text-xs text-green-500 mt-1">{formatRp(savings * 12)} per tahun</p>
       </div>
+      <p className="text-xs text-gray-300 mt-3">Estimasi ilustratif. Fee AstraToko 2.5% flat per transaksi.</p>
     </div>
   )
 }
@@ -474,144 +403,291 @@ function SavingsCalculator() {
 
 const FAQ_ITEMS = [
   {
-    q: 'AstraToko menggantikan marketplace?',
-    a: 'Tidak. Marketplace efektif untuk akuisisi pelanggan baru. AstraToko membantu setelah transaksi pertama: repeat buyer langsung ke tokomu, tanpa komisi ulang.',
+    q: 'Apakah AstraToko menggantikan marketplace?',
+    a: 'Tidak. Marketplace tetap menjadi channel akuisisi yang efektif untuk menjangkau pelanggan baru. AstraToko membantu melanjutkan hubungan pelanggan setelah transaksi pertama — sehingga kamu tidak perlu bayar komisi lagi setiap kali pelanggan yang sama kembali.',
   },
   {
-    q: 'Perlu skill teknis?',
-    a: 'Tidak. Upload CSV dari marketplace, isi nama toko, dan langsung live. Rata-rata kurang dari 10 menit.',
+    q: 'Apakah butuh skill teknis untuk setup?',
+    a: 'Tidak perlu coding sama sekali. Upload CSV dari marketplace, isi nama toko, dan tokomu langsung live dalam kurang dari 10 menit.',
   },
   {
-    q: 'Data pelanggan saya aman?',
-    a: 'Data pelanggan adalah milikmu, bukan milik AstraToko. Kamu bisa export kapanpun.',
+    q: 'Apakah mendukung QRIS dan AstraPay?',
+    a: 'Ya. QRIS dan AstraPay sudah terintegrasi langsung. Pelangganmu bisa bayar dengan metode yang sudah familiar — tanpa perlu download app baru.',
   },
   {
-    q: 'Berapa fee AstraToko?',
-    a: 'Setup gratis. Fee 2.5% flat per transaksi, dibanding 20-25% komisi marketplace.',
+    q: 'Apakah AstraToko gratis?',
+    a: 'Setup toko gratis selamanya. AstraToko mengambil fee 2.5% per transaksi — jauh lebih rendah dari rata-rata biaya platform marketplace.',
   },
 ]
 
 function FAQSection() {
   const [open, setOpen] = useState<number | null>(null)
-  const { ref, inView } = useInView(0.1)
   return (
-    <div ref={ref} className={`transition-all duration-600 ${inView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-      <div className="space-y-2">
-        {FAQ_ITEMS.map((item, i) => (
-          <div key={i} className="border border-gray-100 rounded-2xl overflow-hidden">
-            <button onClick={() => setOpen(open === i ? null : i)}
-              className="w-full flex items-center justify-between px-5 py-4 text-left bg-white hover:bg-gray-50 transition-colors">
-              <span className="font-semibold text-gray-900 text-sm pr-4">{item.q}</span>
-              <ChevronDown size={15} className={`text-gray-400 flex-shrink-0 transition-transform duration-200 ${open === i ? 'rotate-180' : ''}`} />
-            </button>
-            {open === i && (
-              <div className="px-5 pb-4 bg-white">
-                <p className="text-sm text-gray-500 leading-relaxed">{item.a}</p>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+    <div className="space-y-3">
+      {FAQ_ITEMS.map((item, i) => (
+        <div key={i} className="border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+          <button
+            onClick={() => setOpen(open === i ? null : i)}
+            className="w-full flex items-center justify-between px-5 py-4 text-left bg-white hover:bg-gray-50 transition-colors"
+          >
+            <span className="font-semibold text-gray-900 text-sm pr-4">{item.q}</span>
+            <ChevronDown size={16} className={`text-gray-400 flex-shrink-0 transition-transform duration-200 ${open === i ? 'rotate-180' : ''}`} />
+          </button>
+          {open === i && (
+            <div className="px-5 pb-4 bg-white">
+              <p className="text-sm text-gray-500 leading-relaxed">{item.a}</p>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   )
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+// ── Landing Page ──────────────────────────────────────────────────────────────
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white">
 
-      {/* Nav */}
+      {/* ── Nav ── */}
       <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-app-blue rounded-lg flex items-center justify-center">
-              <span className="text-white font-extrabold text-sm">AT</span>
+            <div className="w-8 h-8 bg-app-blue rounded-lg flex items-center justify-center flex-shrink-0">
+              <span className="text-white font-extrabold text-sm leading-none">AT</span>
             </div>
             <span className="font-bold text-app-blue text-lg">AstraToko</span>
           </Link>
           <div className="flex items-center gap-3">
-            <Link href="/toko/tokorizky?demo=true" className="text-sm text-gray-500 hover:text-gray-900 transition-colors hidden sm:block">
-              Demo Toko
+            <Link href="/demo" className="text-sm text-gray-500 hover:text-gray-900 transition-colors hidden sm:block">
+              Lihat Demo
             </Link>
-            <Link href="/mulai" className="bg-app-blue hover:bg-app-blue-light text-white font-bold text-sm py-2 px-5 rounded-xl transition-colors">
-              Mulai Gratis
-            </Link>
+            <Link href="/mulai" className="btn-primary text-sm py-2 px-5">Mulai Gratis</Link>
           </div>
         </div>
       </nav>
 
-      {/* ── Section 1: Hero ── */}
-      <section className="max-w-6xl mx-auto px-6 pt-16 pb-20">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
-          <div>
-            <h1 className="text-[2.8rem] font-extrabold text-gray-900 leading-[1.08] tracking-tight mb-5">
-              Repeat order masuk.<br />
-              <span className="text-app-blue">Komisi marketplace tidak.</span>
+      {/* ── Hero ── */}
+      <section className="max-w-6xl mx-auto px-6 pt-14 pb-20">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
+          <div className="animate-fadein">
+            <div className="inline-flex items-center gap-2 bg-app-blue-pale text-app-blue text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
+              <span className="w-1.5 h-1.5 rounded-full bg-app-blue inline-block flex-shrink-0" />
+              Powered by AstraPay
+            </div>
+            <h1 className="text-5xl md:text-[3.25rem] font-extrabold text-gray-900 leading-[1.06] tracking-tight mb-5">
+              Toko kamu.<br />
+              Customer kamu.<br />
+              <span className="text-app-blue">Margin kamu.</span>
             </h1>
             <p className="text-lg text-gray-500 leading-relaxed mb-8 max-w-md">
-              Simpan nama, nomor WhatsApp, dan riwayat setiap pelanggan.
-              Saat mereka beli lagi, langsung ke tokomu tanpa komisi ulang.
+              Import katalog marketplace dalam sekali klik. AstraToko otomatis menyiapkan QRIS,
+              AstraPay, AstraPoints, dan link tokomu siap dipakai dalam hitungan menit.
             </p>
-            <Link href="/mulai" className="inline-flex items-center gap-2.5 bg-app-blue hover:bg-app-blue-light text-white font-bold text-base px-8 py-3.5 rounded-2xl transition-colors shadow-md shadow-blue-200">
-              Mulai Gratis <ArrowRight size={18} />
-            </Link>
+            <div className="flex flex-wrap gap-3 mb-8">
+              <Link href="/mulai" className="btn-primary inline-flex items-center gap-2 text-base px-7 py-3.5">
+                Mulai Gratis <ArrowRight size={18} />
+              </Link>
+              <Link href="/demo" className="btn-secondary text-base px-7 py-3.5">Lihat Demo</Link>
+            </div>
+
           </div>
 
-          <div className="flex justify-center md:justify-end">
-            <HeroPhone />
+          <div className="flex justify-center md:justify-end pt-10 md:pt-0 animate-slide-in-right">
+            <PhoneMockup />
           </div>
         </div>
       </section>
 
-      {/* Trust bar */}
-      <div className="border-y border-gray-100 py-3.5 bg-gray-50/60">
-        <div className="max-w-6xl mx-auto px-6 flex flex-wrap justify-center gap-x-8 gap-y-2">
-          {[
-            'Import dari Shopee, Tokopedia, TikTok',
-            'QRIS & AstraPay siap pakai',
-            'Data pelanggan 100% milikmu',
-            'Fee 2.5% flat, bukan 20-25%',
-          ].map(item => (
-            <div key={item} className="flex items-center gap-2 text-sm text-gray-500">
-              <Check size={13} className="text-green-500" strokeWidth={3} />
+      {/* ── Trust Bar ── */}
+      <div className="border-y border-gray-100 py-4 bg-gray-50/60">
+        <div className="max-w-6xl mx-auto px-6 flex flex-wrap justify-center gap-x-8 gap-y-2.5">
+          {['Setup kurang dari 10 menit', 'Import katalog marketplace otomatis', 'QRIS & AstraPay siap pakai', 'Data pelanggan milikmu sepenuhnya'].map((item) => (
+            <div key={item} className="flex items-center gap-2 text-sm text-gray-600">
+              <div className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+                <Check size={9} className="text-white" strokeWidth={3} />
+              </div>
               {item}
             </div>
           ))}
         </div>
       </div>
 
-      {/* ── Section 2: Cara Kerja ── */}
+      {/* ── Why AstraToko ── */}
       <section className="max-w-6xl mx-auto px-6 py-20">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl font-extrabold text-gray-900">Dari import ke repeat customer.</h2>
-          <p className="text-gray-500 mt-3 text-sm">Empat langkah, kurang dari 10 menit.</p>
+        <div className="max-w-2xl mx-auto text-center mb-14">
+          <h2 className="text-3xl font-bold text-gray-900 mb-4">
+            Akuisisi di mana saja.<br />
+            <span className="text-app-blue">Hubungan pelanggan tetap milikmu.</span>
+          </h2>
+          <p className="text-gray-500 leading-relaxed">
+            Marketplace, media sosial, dan toko offline sangat efektif untuk menjangkau pelanggan baru.
+            AstraToko melanjutkan hubungan itu — melalui toko online yang langsung terhubung dengan ekosistem AstraPay.
+          </p>
         </div>
-        <HowItWorks />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl mx-auto mb-14">
+          <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Channel Akuisisi</p>
+            <p className="font-bold text-gray-900 text-lg mb-3">Marketplace & Channel Lain</p>
+            <ul className="space-y-2.5">
+              {['Jangkauan ke jutaan pelanggan baru', 'Traffic & discovery built-in', 'Trust tinggi di kalangan pembeli', 'Mudah ditemukan lewat pencarian'].map((item) => (
+                <li key={item} className="flex items-start gap-2 text-sm text-gray-500">
+                  <Check size={13} className="text-gray-300 mt-0.5 flex-shrink-0" />{item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="bg-app-blue rounded-2xl p-6">
+            <p className="text-[10px] font-bold text-blue-300 uppercase tracking-widest mb-4">Channel Hubungan</p>
+            <p className="font-bold text-white text-lg mb-3">AstraToko</p>
+            <ul className="space-y-2.5">
+              {['Pelanggan kembali langsung ke tokomu', 'Data pelanggan 100% milikmu', 'Bangun loyalitas jangka panjang', 'Direct relationship tanpa perantara'].map((item) => (
+                <li key={item} className="flex items-start gap-2 text-sm text-blue-100">
+                  <Check size={13} className="text-blue-300 mt-0.5 flex-shrink-0" />{item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[
+            { n: '1', label: 'Dapatkan Pelanggan', desc: 'Temukan pelanggan baru lewat marketplace, media sosial, atau toko fisik', numBg: 'bg-gray-100', numColor: 'text-gray-500', titleColor: 'text-gray-700', border: 'border-gray-100' },
+            { n: '2', label: 'Bagikan Toko Personal', desc: 'Kirim link tokomu via WhatsApp — satu klik, langsung ke storefront', numBg: 'bg-app-blue', numColor: 'text-white', titleColor: 'text-app-blue', border: 'border-blue-100' },
+            { n: '3', label: 'Checkout via AstraPay', desc: 'Pelanggan bayar dengan QRIS atau AstraPay yang sudah mereka kenal', numBg: 'bg-app-blue', numColor: 'text-white', titleColor: 'text-app-blue', border: 'border-blue-100' },
+            { n: '4', label: 'Pelanggan Kembali', desc: 'Data, AstraPoints, dan direct relationship — sepenuhnya milikmu', numBg: 'bg-green-500', numColor: 'text-white', titleColor: 'text-green-700', border: 'border-green-100' },
+          ].map((step, i, arr) => (
+            <div key={step.n} className={`bg-white rounded-2xl border ${step.border} p-6 shadow-sm text-center`}>
+              <div className={`w-11 h-11 ${step.numBg} rounded-xl flex items-center justify-center mx-auto mb-4`}>
+                <span className={`font-extrabold text-base ${step.numColor}`}>{step.n}</span>
+              </div>
+              <h3 className={`font-bold text-sm ${step.titleColor} mb-2`}>{step.label}</h3>
+              <p className="text-xs text-gray-400 leading-relaxed">{step.desc}</p>
+              {i < arr.length - 1 && (
+                <div className="md:hidden mt-4 flex justify-center">
+                  <ArrowRight size={16} className="text-gray-200 rotate-90" />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </section>
 
-      {/* ── Section 3: Dashboard ── */}
-      <section className="bg-gray-950 py-20">
+      {/* ── Demo ── */}
+      <section className="bg-app-blue py-20">
         <div className="max-w-6xl mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-14 items-center">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
             <div>
-              <h2 className="text-3xl font-extrabold text-white mb-4">
-                AstraToko tahu siapa<br />
-                <span className="text-green-400">yang harus kamu follow-up hari ini.</span>
+              <p className="text-blue-300 text-xs font-bold uppercase tracking-widest mb-4">Demo Interaktif</p>
+              <h2 className="text-3xl font-bold text-white mb-4">
+                Dari katalog ke toko online<br />dalam hitungan menit.
               </h2>
-              <p className="text-gray-400 text-sm leading-relaxed mb-6">
-                Setiap transaksi AstraPay langsung tercatat. AI menganalisis pola dan memberi
-                rekomendasi konkret: siapa yang harus dihubungi, produk apa yang layak di-bundle,
-                dan pelanggan mana yang hampir churn.
+              <p className="text-blue-200 leading-relaxed mb-6">
+                Coba demo interaktif dan lihat bagaimana AstraToko membantu menjalankan
+                channel penjualanmu sendiri — tanpa daftar dulu.
               </p>
               <ul className="space-y-2.5">
                 {[
-                  'Notifikasi order real-time',
-                  'Segmen otomatis: VIP, Repeat, Baru, Tidak Aktif',
-                  'Nomor WhatsApp pelanggan tersimpan',
-                  'AI cross-sell & retensi',
-                ].map(item => (
+                  'Import instan dari CSV marketplace',
+                  'Preview toko sebelum live',
+                  'QRIS dan AstraPay langsung aktif',
+                ].map((item) => (
+                  <li key={item} className="flex items-center gap-2 text-blue-100 text-sm">
+                    <Check size={14} className="text-green-400 flex-shrink-0" />{item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <InteractiveDemo />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Demo → Calculator Bridge ── */}
+      <div className="bg-app-blue border-t border-blue-700/40 py-5">
+        <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-center gap-2 text-center sm:text-left">
+          <p className="text-blue-300 text-sm">Sudah yakin produknya mudah dipakai?</p>
+          <span className="hidden sm:block text-blue-600">·</span>
+          <p className="text-blue-100 text-sm font-semibold">Scroll ke bawah untuk hitung potensi penghematannya.</p>
+          <ChevronDown size={14} className="text-blue-400 animate-bounce" />
+        </div>
+      </div>
+
+      {/* ── How It Works ── */}
+      <section className="bg-astrapay-gray py-20">
+        <div className="max-w-6xl mx-auto px-6">
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">Dari CSV ke toko live dalam 5 langkah.</h2>
+          <p className="text-gray-500 mb-12">Tidak perlu coding. Tidak perlu server.</p>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-8 relative">
+            {[
+              { n: '01', label: 'Export CSV', desc: 'Download ekspor produk dari Seller Center marketplace kamu.' },
+              { n: '02', label: 'Upload', desc: 'Upload ke AstraToko. Kolom nama, harga, stok, kategori auto-mapping.' },
+              { n: '03', label: 'Toko Live ⚡', desc: 'Konfirmasi produk — toko langsung aktif dan bisa diakses pembeli.' },
+              { n: '04', label: 'Bagikan Link', desc: 'Kirim link tokomu ke repeat buyer via WhatsApp — langsung dari app.' },
+              { n: '05', label: 'Terima Pesanan', desc: 'Order masuk via AstraPay. Notifikasi real-time di dashboard.' },
+            ].map((step, i) => (
+              <div key={step.n} className="relative flex md:flex-col gap-4 md:gap-0">
+                {i < 4 && <div className="hidden md:block absolute top-5 left-full w-full h-px bg-gray-200 -translate-x-1/2 z-0" />}
+                <div className="w-10 h-10 bg-app-blue rounded-xl flex items-center justify-center text-white font-extrabold text-xs flex-shrink-0 relative z-10">{step.n}</div>
+                <div className="md:mt-4">
+                  <h3 className="font-bold text-gray-900 mb-1 text-sm">{step.label}</h3>
+                  <p className="text-gray-400 text-xs leading-relaxed">{step.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Feature Grid ── */}
+      <section className="max-w-6xl mx-auto px-6 py-20">
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Semua yang kamu butuhkan, dalam satu platform.</h2>
+        <p className="text-gray-500 mb-10">Dari import katalog hingga pembayaran dan loyalitas pelanggan.</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { Icon: Package,    title: 'Import Katalog',       desc: 'CSV dari Shopee, Tokopedia & TikTok Shop',            bg: 'bg-blue-50',   iconColor: 'text-app-blue' },
+            { Icon: Store,      title: 'Toko Online',          desc: 'URL custom, mobile-first storefront',                 bg: 'bg-green-50',  iconColor: 'text-green-600' },
+            { Icon: CreditCard, title: 'QRIS & AstraPay',      desc: 'Checkout siap pakai, tanpa app baru',                 bg: 'bg-purple-50', iconColor: 'text-purple-600' },
+            { Icon: Star,       title: 'AstraPoints',          desc: 'Poin loyalty otomatis tiap transaksi',                bg: 'bg-amber-50',  iconColor: 'text-astrapay-gold' },
+            { Icon: Bell,       title: 'Notifikasi Real-time', desc: 'Pesanan baru langsung masuk ke dashboard',            bg: 'bg-indigo-50', iconColor: 'text-indigo-600' },
+            { Icon: Zap,        title: 'Setup < 10 Menit',    desc: 'Import CSV, preview produk, toko langsung live',      bg: 'bg-amber-50',  iconColor: 'text-astrapay-gold' },
+            { Icon: Share2,     title: 'Share via WhatsApp',   desc: 'Bagikan link toko ke pelanggan dalam satu klik',      bg: 'bg-green-50',  iconColor: 'text-green-600' },
+            { Icon: Users,      title: 'Order Dashboard',      desc: 'Kelola pesanan dan pantau penjualan real-time',       bg: 'bg-blue-50',   iconColor: 'text-app-blue' },
+          ].map((item) => (
+            <div key={item.title} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+              <div className={`w-10 h-10 ${item.bg} rounded-xl flex items-center justify-center mb-4`}>
+                <item.Icon size={19} className={item.iconColor} />
+              </div>
+              <p className="font-bold text-gray-900 text-sm mb-1">{item.title}</p>
+              <p className="text-xs text-gray-400 leading-relaxed">{item.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Dashboard Preview ── */}
+      <section className="bg-gray-950 py-20">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+            <div>
+              <p className="text-blue-400 text-xs font-bold uppercase tracking-widest mb-4">Merchant Dashboard</p>
+              <h2 className="text-3xl font-bold text-white mb-4">
+                Order masuk.<br />
+                <span className="text-green-400">Dashboard update seketika.</span>
+              </h2>
+              <p className="text-gray-400 leading-relaxed mb-6">
+                Setiap transaksi via AstraPay langsung tercatat di dashboardmu — real-time,
+                tanpa refresh. Tidak ada invoice manual. Tidak ada rekap akhir bulan yang ribet.
+              </p>
+              <ul className="space-y-3">
+                {[
+                  'Notifikasi order real-time via Supabase',
+                  'Revenue dari direct channel langsung terhitung',
+                  'Database pelanggan terbangun otomatis',
+                  'Hubungi repeat buyer via WhatsApp 1-klik',
+                ].map((item) => (
                   <li key={item} className="flex items-center gap-2.5 text-gray-300 text-sm">
                     <div className="w-4 h-4 rounded-full bg-green-500/20 border border-green-500/40 flex items-center justify-center flex-shrink-0">
                       <Check size={8} className="text-green-400" strokeWidth={3} />
@@ -620,97 +696,126 @@ export default function LandingPage() {
                   </li>
                 ))}
               </ul>
-              <Link href="/dashboard/tokorizky"
-                className="mt-7 inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
-                Buka dashboard demo <ArrowRight size={14} />
-              </Link>
+              <div className="mt-8">
+                <Link href="/dashboard" className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/20 text-white font-semibold px-5 py-3 rounded-xl text-sm transition-colors">
+                  Buka Dashboard Demo <ArrowRight size={15} />
+                </Link>
+              </div>
             </div>
-            <LiveDashboard />
+            <DashboardPreview />
           </div>
         </div>
       </section>
 
-      {/* ── Section 4: AI Recommendations ── */}
-      <section className="max-w-6xl mx-auto px-6 py-20">
-        <div className="text-center mb-12">
-          <p className="text-xs font-bold text-violet-500 uppercase tracking-widest mb-3">AI Insights</p>
-          <h2 className="text-3xl font-extrabold text-gray-900 mb-3">
-            Data berubah jadi aksi.
-          </h2>
-          <p className="text-gray-500 max-w-lg mx-auto text-sm leading-relaxed">
-            Di marketplace, data pelanggan bukan milikmu. Di AstraToko, setiap transaksi memperkaya database yang bisa langsung kamu gunakan.
-          </p>
-        </div>
-        <AICards />
-      </section>
-
-      {/* ── Section 5: Savings Calculator ── */}
-      <section className="bg-gray-50 py-20">
+      {/* ── Business Impact ── */}
+      <section className="bg-astrapay-gray py-20">
         <div className="max-w-6xl mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-14 items-center">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
             <div>
-              <h2 className="text-3xl font-extrabold text-gray-900 mb-4">
-                Repeat order lewat tokomu<br />
-                <span className="text-green-600">jauh lebih menguntungkan.</span>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Dampak Bisnis</p>
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">
+                Berapa potensi bisnismu<br />dengan AstraToko?
               </h2>
-              <p className="text-gray-500 text-sm leading-relaxed mb-6">
-                Kalau pelanggan yang sama beli 10x lewat marketplace, kamu bayar komisi 10 kali.
-                Mulai dari order kedua di AstraToko, fee tetap 2.5%.
+              <p className="text-gray-500 leading-relaxed mb-4">
+                Geser slider sesuai GMV bulananmu. Lihat estimasi penghematan biaya platform
+                ketika pelanggan yang sudah ada berbelanja langsung melalui tokomu.
               </p>
-              <div className="bg-white border border-gray-200 rounded-2xl p-4 flex items-start gap-3">
-                <Zap size={14} className="text-amber-500 mt-0.5 flex-shrink-0" fill="currentColor" />
-                <p className="text-sm text-gray-600 leading-relaxed">
-                  Geser slider untuk melihat penghematan berdasarkan GMV tokomu.
-                </p>
-              </div>
+              <p className="text-xs text-gray-400">
+                Estimasi ilustratif. Biaya aktual bergantung pada platform yang digunakan.
+              </p>
             </div>
             <SavingsCalculator />
           </div>
         </div>
       </section>
 
-      {/* ── Section 6: FAQ + CTA ── */}
-      <section className="max-w-3xl mx-auto px-6 py-20">
-        <h2 className="text-2xl font-extrabold text-gray-900 mb-8 text-center">Pertanyaan Umum</h2>
-        <FAQSection />
-
-        {/* Final CTA */}
-        <div className="mt-16 text-center">
-          <h2 className="text-3xl font-extrabold text-gray-900 mb-4">
-            Mulai bangun customer database<br />milikmu sendiri.
-          </h2>
-          <p className="text-gray-500 mb-8 max-w-md mx-auto leading-relaxed">
-            Setiap transaksi pertama adalah awal dari hubungan yang kamu miliki, bukan milik marketplace.
+      {/* ── Astra Ecosystem ── */}
+      <section className="bg-app-blue py-20">
+        <div className="max-w-6xl mx-auto px-6 text-center">
+          <p className="text-blue-300 text-xs font-bold uppercase tracking-widest mb-4">Didukung Ekosistem Astra</p>
+          <h2 className="text-3xl font-bold text-white mb-4">Ekosistem Astra, bukan sekadar toko.</h2>
+          <p className="text-blue-200 max-w-xl mx-auto mb-12 leading-relaxed">
+            AstraToko terintegrasi penuh dengan Astra Financial Services —
+            memberikan pengalaman pembayaran yang sudah familiar bagi jutaan pengguna AstraPay.
           </p>
-          <Link href="/mulai" className="inline-flex items-center gap-2.5 bg-app-blue hover:bg-app-blue-light text-white font-bold text-base px-10 py-4 rounded-2xl transition-colors shadow-lg shadow-blue-200">
-            Mulai Gratis <ArrowRight size={18} />
-          </Link>
-          <p className="text-sm text-gray-400 mt-4">Setup kurang dari 10 menit · Tidak perlu kartu kredit</p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {[
+              { label: 'QRIS Universal', Icon: CreditCard },
+              null,
+              { label: 'AstraPay', Icon: Zap },
+              null,
+              { label: 'AstraPoints', Icon: Star },
+              null,
+              { label: 'Direct Customer', Icon: Users },
+              null,
+              { label: 'Loyal Buyer', Icon: ShieldCheck },
+            ].map((item, i) =>
+              item === null ? (
+                <ArrowRight key={i} size={14} className="text-blue-400" />
+              ) : (
+                <div key={i} className="bg-white/10 rounded-xl px-4 py-3 text-center min-w-[96px]">
+                  <item.Icon size={17} className="text-blue-300 mx-auto mb-1" />
+                  <p className="text-white text-xs font-semibold">{item.label}</p>
+                </div>
+              )
+            )}
+          </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-100 bg-white px-6 py-10">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-          <div>
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-6 h-6 bg-app-blue rounded flex items-center justify-center">
-                <span className="text-white font-bold text-[10px]">AT</span>
+      {/* ── FAQ + Final CTA ── */}
+      <section className="max-w-3xl mx-auto px-6 py-20">
+        <h2 className="text-3xl font-bold text-gray-900 mb-10 text-center">Pertanyaan Umum</h2>
+        <FAQSection />
+        <div className="mt-16 text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">Siap buka toko sendiri?</h2>
+          <p className="text-gray-500 mb-1">Import produk. Terima pembayaran. Bangun hubungan langsung dengan pelanggan.</p>
+          <p className="text-gray-400 text-sm mb-8">Gratis setup. Tidak perlu kartu kredit.</p>
+          <Link href="/mulai" className="btn-primary inline-flex items-center gap-2 text-base px-8 py-4">
+            Mulai Gratis <ArrowRight size={18} />
+          </Link>
+          <p className="mt-4 text-sm text-gray-400">
+            Atau{' '}
+            <Link href="/toko/tokorizky" className="text-app-blue hover:underline">lihat demo store →</Link>
+          </p>
+        </div>
+      </section>
+
+      {/* ── Footer ── */}
+      <footer className="border-t border-gray-100 px-6 py-10">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex flex-col md:flex-row items-start justify-between gap-8 mb-8">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 bg-app-blue rounded flex items-center justify-center flex-shrink-0">
+                  <span className="text-white font-bold text-xs leading-none">AT</span>
+                </div>
+                <span className="font-bold text-gray-800">AstraToko</span>
               </div>
-              <span className="font-bold text-gray-800 text-sm">AstraToko</span>
+              <p className="text-sm text-gray-400 max-w-xs leading-relaxed">
+                Platform owned-commerce untuk seller Indonesia.<br />Powered by AstraPay.
+              </p>
             </div>
-            <p className="text-xs text-gray-400 leading-relaxed">
-              Powered by AstraPay · QRIS · AstraPoints
-            </p>
+            <div className="grid grid-cols-2 gap-x-12 gap-y-2">
+              {[
+                { label: 'Mulai Gratis', href: '/mulai' },
+                { label: 'Demo Store',  href: '/toko/tokorizky' },
+                { label: 'Demo Flow',   href: '/demo' },
+                { label: 'Dashboard',   href: '/dashboard' },
+              ].map((link) => (
+                <Link key={link.label} href={link.href} className="text-sm text-gray-500 hover:text-gray-900 transition-colors">
+                  {link.label}
+                </Link>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-x-6 gap-y-1.5">
-            {[
-              { label: 'Demo Toko',  href: '/toko/tokorizky?demo=true' },
-              { label: 'Dashboard', href: '/dashboard/tokorizky' },
-              { label: 'Mulai',     href: '/mulai' },
-            ].map(link => (
-              <Link key={link.label} href={link.href} className="text-sm text-gray-400 hover:text-gray-700 transition-colors">{link.label}</Link>
-            ))}
+          <div className="border-t border-gray-100 pt-6 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-gray-400">
+            <p>AstraToko by Astra Financial Services. Powered by AstraPay.</p>
+            <div className="flex gap-5">
+              <span>Privacy</span>
+              <span>Terms</span>
+              <span>Contact</span>
+            </div>
           </div>
         </div>
       </footer>
