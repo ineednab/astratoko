@@ -10,12 +10,100 @@ import type { Seller, Product } from '@/lib/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type CheckoutStep  = 'shipping' | 'buyer_info' | 'review' | 'paying' | 'success' | 'merchant_reveal' | 'payment_failed'
+type CheckoutStep  = 'checking' | 'connect' | 'syncing' | 'shipping' | 'buyer_info' | 'review' | 'paying' | 'success' | 'merchant_reveal' | 'payment_failed'
 type DemoProgress  = 'browse' | 'select' | 'checkout' | 'success'
 type PaymentMethod = 'astrapay' | 'transfer' | 'cod'
 type QrisStatus    = 'waiting' | 'detected' | 'verifying' | 'verified'
 type MerchantPhase = 'intro' | 'dashboard'
 type CartItem      = { product: Product; quantity: number }
+
+type BuyerIdentity = { name: string; phone: string }
+type MyOrder = {
+  id: string
+  product_name: string
+  total: number
+  category: string
+  store: string
+  storeInitial: string
+  status: string
+  createdAt: number
+}
+
+// ── Dummy funnel analytics ──────────────────────────────────────────────────
+// Lightweight, demo-only. Logs to console and buffers on window.__astraEvents so
+// events are inspectable live ("how do you measure this feature?").
+type AstraEvent =
+  | 'identity_gate_view'
+  | 'identity_gate_connect'
+  | 'identity_gate_skip'
+  | 'identity_connected'
+  | 'checkout_started'
+  | 'payment_success'
+
+function track(event: AstraEvent, props?: Record<string, unknown>) {
+  if (typeof window === 'undefined') return
+  const w = window as unknown as { __astraEvents?: { event: string; props?: Record<string, unknown>; t: number }[] }
+  w.__astraEvents = w.__astraEvents ?? []
+  w.__astraEvents.push({ event, props, t: Date.now() })
+  // eslint-disable-next-line no-console
+  console.log('[analytics]', event, props ?? '')
+}
+
+// ── localStorage persistence (SSR-guarded) ───────────────────────────────────
+
+const LS_KEYS = {
+  linked:   'astratoko_linked',
+  identity: 'astratoko_identity',
+  points:   'astratoko_points',
+  stamps:   'astratoko_stamps',
+  orders:   'astratoko_orders',
+  seen:     'astratoko_identity_seen',
+} as const
+
+function lsGet<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback
+  try {
+    const raw = window.localStorage.getItem(key)
+    return raw == null ? fallback : (JSON.parse(raw) as T)
+  } catch {
+    return fallback
+  }
+}
+
+function lsSet(key: string, value: unknown) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    /* ignore quota / privacy-mode errors */
+  }
+}
+
+// ── Shared AstraPay identity helpers ─────────────────────────────────────────
+
+async function checkAstraPayBinding(phone: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/astrapay/check-binding?phone=${encodeURIComponent(phone)}`)
+    const data = await res.json()
+    return Boolean(data.bound)
+  } catch {
+    return false
+  }
+}
+
+async function startAstraPayBinding(phone: string): Promise<string | null> {
+  try {
+    const res = await fetch('/api/astrapay/bind', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phoneNo: phone }),
+    })
+    const data = await res.json()
+    return data.redirectUrl ?? null
+  } catch {
+    return null
+  }
+}
 
 const DEMO_STEPS: { id: DemoProgress; label: string }[] = [
   { id: 'browse',   label: 'Browse'   },
@@ -275,9 +363,15 @@ function CartSheet({
           </div>
 
           {/* Subtotal */}
-          <div className="bg-gray-50 rounded-2xl px-4 py-3 flex items-center justify-between mb-5">
-            <span className="text-sm text-gray-600">Subtotal ({totalQty} item)</span>
-            <span className="font-extrabold text-gray-900">{formatRp(subtotal)}</span>
+          <div className="bg-gray-50 rounded-2xl px-4 py-3 mb-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">Subtotal ({totalQty} item)</span>
+              <span className="font-extrabold text-gray-900">{formatRp(subtotal)}</span>
+            </div>
+            <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-gray-200/70">
+              <span className="text-xs text-amber-700 flex items-center gap-1"><Star size={11} className="text-astrapay-gold" fill="currentColor" /> Estimasi AstraPoints</span>
+              <span className="text-xs font-bold text-amber-700">+{totalQty * 50}</span>
+            </div>
           </div>
 
           <button
@@ -434,13 +528,222 @@ function HeroBanner({
   )
 }
 
+// ── AstraPay Connect (shared: welcome sheet + checkout fallback) ──────────────
+
+function AstraPayConnect({
+  defaultPhone,
+  submitLabel,
+  onConnected,
+}: {
+  defaultPhone?: string
+  submitLabel: string
+  onConnected: (identity: BuyerIdentity) => void
+}) {
+  const [phase,      setPhase]      = useState<'phone' | 'waiting'>('phone')
+  const [phone,      setPhone]      = useState(defaultPhone ?? '')
+  const [bindingUrl, setBindingUrl] = useState<string | null>(null)
+  const [busy,       setBusy]       = useState(false)
+  const [error,      setError]      = useState<string | null>(null)
+
+  const cleanPhone = phone.replace(/[\s\-]/g, '')
+  const phoneValid = /^\d{10,}$/.test(cleanPhone)
+
+  async function handleConnect() {
+    if (!phoneValid || busy) return
+    setBusy(true); setError(null)
+    // Already bound on this number? Skip OTP entirely (issue #9).
+    const bound = await checkAstraPayBinding(cleanPhone)
+    if (bound) { onConnected({ name: DEMO_BUYER_DATA.name, phone: cleanPhone }); return }
+    const url = await startAstraPayBinding(cleanPhone)
+    if (!url) { setBusy(false); setError('Tidak dapat terhubung ke AstraPay. Coba lagi.'); return }
+    setBindingUrl(url)
+    window.open(url, '_blank', 'noopener,noreferrer')
+    setBusy(false)
+    setPhase('waiting')
+  }
+
+  if (phase === 'waiting') {
+    return (
+      <div className="space-y-3">
+        <div className="bg-app-blue-pale border border-app-blue/20 rounded-2xl px-4 py-5 text-center">
+          <div className="flex items-center justify-center gap-2 mb-1.5">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <p className="text-sm font-semibold text-app-blue">Menunggu verifikasi AstraPay</p>
+          </div>
+          <p className="text-xs text-gray-500 leading-relaxed">Selesaikan OTP &amp; PIN di tab AstraPay, lalu kembali ke sini.</p>
+        </div>
+        {bindingUrl && (
+          <a href={bindingUrl} target="_blank" rel="noopener noreferrer"
+            className="w-full border-2 border-app-blue text-app-blue font-bold py-3 rounded-2xl flex items-center justify-center gap-2 text-sm transition-colors hover:bg-app-blue-pale"
+          >
+            Buka AstraPay lagi <ArrowRight size={15} />
+          </a>
+        )}
+        <button onClick={() => onConnected({ name: DEMO_BUYER_DATA.name, phone: cleanPhone })}
+          className="w-full bg-green-500 hover:bg-green-400 text-white font-bold py-4 rounded-2xl text-sm transition-colors"
+        >
+          Sudah terhubung
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nomor HP AstraPay</label>
+        <div className="flex items-stretch gap-2">
+          <span className="flex items-center px-3 rounded-xl bg-gray-100 text-sm font-semibold text-gray-500">+62</span>
+          <input type="tel" value={phone} onChange={(e) => { setPhone(e.target.value); setError(null) }}
+            placeholder="85117323662" autoFocus
+            className={`flex-1 border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 transition-colors ${error ? 'border-red-300 bg-red-50' : 'bg-gray-50 border-gray-200 focus:bg-white'}`}
+          />
+        </div>
+        {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+      </div>
+      <button onClick={handleConnect} disabled={!phoneValid || busy}
+        className="w-full bg-app-blue hover:bg-app-blue-light disabled:opacity-50 text-white font-bold py-4 rounded-2xl text-sm transition-colors flex items-center justify-center gap-2"
+      >
+        {busy
+          ? <><svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Menghubungkan...</>
+          : submitLabel}
+      </button>
+    </div>
+  )
+}
+
+// ── Identity Sync (fetch profile / points / loyalty) ──────────────────────────
+
+function IdentitySync({ onDone }: { onDone: () => void }) {
+  const rows = ['Mengambil profil', 'Menyinkron AstraPoints', 'Memuat Loyalty']
+  const [done, setDone] = useState(0)
+  useEffect(() => {
+    const timers = rows.map((_, i) => setTimeout(() => setDone(i + 1), 260 * (i + 1)))
+    const fin = setTimeout(onDone, 260 * rows.length + 320)
+    return () => { timers.forEach(clearTimeout); clearTimeout(fin) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return (
+    <div className="space-y-2.5">
+      {rows.map((label, i) => (
+        <div key={label} className="flex items-center gap-3 bg-gray-50 rounded-2xl px-4 py-3">
+          <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${i < done ? 'bg-green-500' : 'bg-gray-200'}`}>
+            {i < done
+              ? <CheckCircle size={12} className="text-white" />
+              : <svg className="animate-spin h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
+          </div>
+          <span className={`text-sm font-medium ${i < done ? 'text-gray-800' : 'text-gray-400'}`}>{label}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── AstraPay Welcome (store-entry identity gate) ──────────────────────────────
+
+function WelcomeAstraPay({
+  sellerName,
+  onConnected,
+  onGuest,
+}: {
+  sellerName: string
+  onConnected: (identity: BuyerIdentity) => void
+  onGuest: () => void
+}) {
+  const [phase,    setPhase]    = useState<'intro' | 'connect' | 'syncing' | 'done'>('intro')
+  const [identity, setIdentity] = useState<BuyerIdentity | null>(null)
+
+  useEffect(() => { track('identity_gate_view', { seller: sellerName }) }, [sellerName])
+
+  const VALUE_PROPS = [
+    { icon: '⚡', label: 'Checkout 1 klik' },
+    { icon: '⭐', label: 'AstraPoints tiap transaksi' },
+    { icon: '🎟', label: 'Loyalty Stamp otomatis' },
+    { icon: '🧾', label: 'Riwayat pembelian tersimpan' },
+  ]
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[55] flex items-end justify-center">
+      <div className="bg-white w-full max-w-md rounded-t-3xl pb-8 max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-center pt-3 pb-1"><div className="w-10 h-1 bg-gray-200 rounded-full" /></div>
+
+        {phase === 'done' && identity ? (
+          <div className="px-6 pt-6 pb-2 text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce-in">
+              <span className="text-3xl">🎉</span>
+            </div>
+            <h3 className="text-xl font-extrabold text-gray-900 mb-1">Halo, {identity.name.split(' ')[0]}!</h3>
+            <p className="text-sm text-gray-500 mb-6">AstraPay berhasil terhubung. Datamu akan terisi otomatis saat checkout.</p>
+            <button onClick={() => onConnected(identity)}
+              className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl text-base transition-colors"
+            >
+              Mulai Belanja
+            </button>
+          </div>
+        ) : phase === 'syncing' ? (
+          <div className="px-6 pt-5 pb-2">
+            <p className="font-extrabold text-gray-900 text-lg mb-4">Menyiapkan identitasmu...</p>
+            <IdentitySync onDone={() => setPhase('done')} />
+          </div>
+        ) : phase === 'connect' ? (
+          <div className="px-6 pt-4 pb-2">
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="w-8 h-8 bg-app-blue rounded-xl flex items-center justify-center">
+                <span className="text-white font-extrabold text-[10px]">AP</span>
+              </div>
+              <h3 className="font-extrabold text-gray-900 text-lg">Masuk dengan AstraPay</h3>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">Hubungkan akun hanya sekali.</p>
+            <AstraPayConnect
+              defaultPhone={DEMO_BUYER_DATA.phone}
+              submitLabel="Kirim OTP"
+              onConnected={(id) => { track('identity_connected', { via: 'welcome' }); setIdentity(id); setPhase('syncing') }}
+            />
+          </div>
+        ) : (
+          <div className="px-6 pt-4 pb-2">
+            <div className="w-14 h-14 bg-app-blue rounded-2xl flex items-center justify-center mb-4">
+              <span className="text-white font-extrabold text-lg">AP</span>
+            </div>
+            <h3 className="font-extrabold text-gray-900 text-xl mb-1 leading-snug">Belanja lebih cepat<br />dengan AstraPay</h3>
+            <p className="text-sm text-gray-500 mb-5">Kenali dirimu sekali — checkout berikutnya tanpa isi data lagi.</p>
+
+            <div className="space-y-2.5 mb-6">
+              {VALUE_PROPS.map((v) => (
+                <div key={v.label} className="flex items-center gap-3">
+                  <span className="text-lg w-6 text-center flex-shrink-0">{v.icon}</span>
+                  <span className="text-sm text-gray-700 font-medium">{v.label}</span>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => { track('identity_gate_connect'); setPhase('connect') }}
+              className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl text-base transition-colors mb-1"
+            >
+              Masuk dengan AstraPay
+            </button>
+            <p className="text-center text-[11px] text-gray-400 mb-3">Hubungkan akun hanya sekali.</p>
+            <button onClick={() => { track('identity_gate_skip'); onGuest() }}
+              className="w-full text-gray-500 hover:text-gray-700 font-semibold py-2.5 text-sm transition-colors"
+            >
+              Belanja sebagai Tamu
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Checkout constants ────────────────────────────────────────────────────────
 
 const CITIES = ['Jakarta', 'Bandung', 'Bogor', 'Bekasi', 'Depok', 'Tangerang', 'Surabaya', 'Yogyakarta', 'Semarang', 'Medan', 'Makassar', 'Palembang']
 
-const CHECKOUT_STEP_LABELS = ['Pengiriman', 'Info', 'Review', 'Bayar']
+const CHECKOUT_STEP_LABELS = ['Info', 'Pengiriman', 'Review', 'Bayar']
 const CHECKOUT_STEP_INDEX: Record<CheckoutStep, number> = {
-  shipping: 0, buyer_info: 1, review: 2,
+  // Identity resolution states are invisible — never shown as numbered steps.
+  checking: 0, connect: 0, syncing: 0,
+  buyer_info: 0, shipping: 1, review: 2,
   paying: 3, success: 3, merchant_reveal: 3, payment_failed: 2,
 }
 
@@ -452,6 +755,8 @@ function CheckoutModal({
   onClose,
   isDemoMode,
   isLinked,
+  identity,
+  onConnected,
   onDemoProgress,
   onSuccess,
 }: {
@@ -460,25 +765,31 @@ function CheckoutModal({
   onClose: () => void
   isDemoMode?: boolean
   isLinked?: boolean
+  identity?: BuyerIdentity | null
+  onConnected?: (identity: BuyerIdentity) => void
   onDemoProgress?: (p: DemoProgress) => void
-  onSuccess?: (opts: { points: number; sellerName: string }) => void
+  onSuccess?: (opts: { points: number; sellerName: string; order: MyOrder }) => void
 }) {
   const DEMO_BUYERS = ['Justin Bieber', 'Dua Lipa', 'Sabrina Carpenter', 'Taylor Swift', 'Ariana Grande', 'Billie Eilish']
 
-  const [step,             setStep]             = useState<CheckoutStep>('shipping')
+  // Identity resolution is invisible: linked buyers land on the greeting/Info path,
+  // guests get the Connect fallback. Never shown as a numbered checkout step.
+  const [step,             setStep]             = useState<CheckoutStep>(isLinked ? 'syncing' : 'checking')
   const [buyerName,        setBuyerName]        = useState(() => {
+    if (identity) return identity.name
     if (isLinked) return DEMO_BUYER_DATA.name
     if (isDemoMode) return DEMO_BUYERS[Math.floor(Math.random() * DEMO_BUYERS.length)]
     return ''
   })
-  const [buyerPhone,       setBuyerPhone]       = useState(() => isLinked ? DEMO_BUYER_DATA.phone : '')
+  const [buyerPhone,       setBuyerPhone]       = useState(() => identity?.phone ?? (isLinked ? DEMO_BUYER_DATA.phone : ''))
   const [buyerAddress,     setBuyerAddress]     = useState('')
+  const [kecamatan,        setKecamatan]        = useState('')
   const [kota,             setKota]             = useState('')
   const [kodePos,          setKodePos]          = useState('')
   const [formErrors,       setFormErrors]       = useState<Record<string, string>>({})
   const [editingInfo,      setEditingInfo]      = useState(!isLinked)
   const [selectedShipping, setSelectedShipping] = useState('pickup')
-  const [selectedPayment,  setSelectedPayment]  = useState<PaymentMethod>('astrapay')
+  const [selectedPayment]                       = useState<PaymentMethod>('astrapay')
   const [orderId,          setOrderId]          = useState<string | null>(null)
   const [confirming,       setConfirming]       = useState(false)
   const [qrisStatus,       setQrisStatus]       = useState<QrisStatus>('waiting')
@@ -489,6 +800,34 @@ function CheckoutModal({
   const confirmingRef = useRef(false)
   const pollRef       = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  useEffect(() => { track('checkout_started', { seller: seller.name, linked: Boolean(isLinked) }) }, [seller.name, isLinked])
+
+  // Invisible identity resolution — runs once when a guest opens checkout.
+  useEffect(() => {
+    if (step !== 'checking') return
+    let cancelled = false
+    const started = Date.now()
+    ;(async () => {
+      const known = buyerPhone || DEMO_BUYER_DATA.phone
+      const bound = await checkAstraPayBinding(known)
+      const elapsed = Date.now() - started
+      const wait = Math.max(0, 300 - elapsed)
+      setTimeout(() => {
+        if (cancelled) return
+        if (bound) {
+          onConnected?.({ name: DEMO_BUYER_DATA.name, phone: known })
+          setBuyerName(DEMO_BUYER_DATA.name)
+          setBuyerPhone(known)
+          setStep('syncing')
+        } else {
+          setStep('connect')
+        }
+      }, wait)
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step])
+
   const isDemo         = process.env.NEXT_PUBLIC_PAYMENT_PROVIDER === 'demo'
   const shipping       = SHIPPING_OPTIONS.find((s) => s.id === selectedShipping) ?? SHIPPING_OPTIONS[0]
   const subtotal       = cart.reduce((s, item) => s + item.product.price * item.quantity, 0)
@@ -498,19 +837,28 @@ function CheckoutModal({
   const primary        = cart[0].product
   const currentStepIdx = CHECKOUT_STEP_INDEX[step]
 
-  function validateBuyerInfo() {
+  // Identity (name + WA) — validated when leaving the Info step.
+  function validateIdentity() {
     const errs: Record<string, string> = {}
     if (!buyerName.trim()) errs.nama = 'Nama wajib diisi'
     const cleanPhone = buyerPhone.replace(/[\s\-]/g, '')
     if (!cleanPhone) errs.wa = 'Nomor WhatsApp wajib diisi'
     else if (!/^\d{10,}$/.test(cleanPhone)) errs.wa = 'Minimal 10 digit, hanya angka'
+    setFormErrors((p) => ({ ...p, ...errs, nama: errs.nama ?? '', wa: errs.wa ?? '' }))
+    return !errs.nama && !errs.wa
+  }
+
+  // Shipping address — only required for couriers; validated when leaving Shipping.
+  function validateShipping() {
+    const errs: Record<string, string> = {}
     if (selectedShipping !== 'pickup') {
       if (!buyerAddress.trim()) errs.alamat = 'Alamat wajib diisi'
+      if (!kecamatan.trim()) errs.kecamatan = 'Kecamatan wajib diisi'
       if (!kota) errs.kota = 'Kota wajib dipilih'
       if (!kodePos) errs.kodePos = 'Kode pos wajib diisi'
       else if (!/^\d{5}$/.test(kodePos)) errs.kodePos = 'Kode pos harus 5 digit angka'
     }
-    setFormErrors(errs)
+    setFormErrors((p) => ({ ...p, ...errs }))
     return Object.keys(errs).length === 0
   }
 
@@ -530,7 +878,7 @@ function CheckoutModal({
           quantity:        totalQty,
           shipping_cost:   shipping.price,
           shipping_method: shipping.id,
-          buyer_address:   buyerAddress,
+          buyer_address:   [buyerAddress, kecamatan].filter(Boolean).join(', '),
           buyer_city:      kota,
           category:        primary.category,
           buyer_name:      buyerName,
@@ -538,8 +886,24 @@ function CheckoutModal({
         }),
       })
       const json = await res.json()
-      setOrderId(json.order?.id ?? null)
-      onSuccess?.({ points: pointsEarned, sellerName: seller.name })
+      const newId = json.order?.id ?? `LOCAL-${Date.now()}`
+      const productName = cart.length > 1 ? `${primary.name} +${cart.length - 1} lainnya` : cart[0].quantity > 1 ? `${primary.name} ×${cart[0].quantity}` : primary.name
+      setOrderId(newId)
+      track('payment_success', { seller: seller.name, total, points: pointsEarned })
+      onSuccess?.({
+        points: pointsEarned,
+        sellerName: seller.name,
+        order: {
+          id:           newId,
+          product_name: productName,
+          total,
+          category:     primary.category,
+          store:        seller.name,
+          storeInitial: seller.initial,
+          status:       selectedShipping === 'pickup' ? 'Siap Diambil' : 'Menunggu Pengiriman',
+          createdAt:    Date.now(),
+        },
+      })
       setStep('success')
       onDemoProgress?.('success')
     } catch {
@@ -641,8 +1005,8 @@ function CheckoutModal({
           <div className={`w-10 h-1 rounded-full ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
         </div>
 
-        {/* ── Progress bar ── */}
-        {!['success', 'merchant_reveal'].includes(step) && (
+        {/* ── Progress bar (hidden during invisible identity resolution) ── */}
+        {!['checking', 'connect', 'syncing', 'success', 'merchant_reveal'].includes(step) && (
           <div className="flex items-start px-5 pt-2 pb-1">
             {CHECKOUT_STEP_LABELS.map((label, idx) => (
               <Fragment key={label}>
@@ -668,12 +1032,124 @@ function CheckoutModal({
         )}
 
 
-        {/* ── Shipping ── */}
-        {step === 'shipping' && (
-          <div className="px-5 pb-24 pt-3">
-            <div className="flex items-center gap-3 mb-5">
+        {/* ── Checking (invisible identity resolve) ── */}
+        {step === 'checking' && (
+          <div className="px-5 pb-10 pt-8 flex flex-col items-center justify-center min-h-[280px] text-center">
+            <svg className="animate-spin h-8 w-8 text-app-blue mb-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            <p className="text-sm font-medium text-gray-500">Menyiapkan checkout...</p>
+          </div>
+        )}
+
+        {/* ── Connect AstraPay (identity verification — guests only) ── */}
+        {step === 'connect' && (
+          <div className="px-5 pb-10 pt-3">
+            <div className="flex items-center gap-3 mb-4">
               <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
                 <X size={18} />
+              </button>
+              <h3 className="font-extrabold text-gray-900 text-lg">Verifikasi Identitas</h3>
+            </div>
+            <p className="text-sm text-gray-500 mb-5">Kenali dirimu lewat AstraPay — cukup sekali. Checkout berikutnya otomatis.</p>
+            <AstraPayConnect
+              defaultPhone={buyerPhone || (isDemoMode ? DEMO_BUYER_DATA.phone : '')}
+              submitLabel="Kirim OTP"
+              onConnected={(id) => {
+                track('identity_connected', { via: 'checkout' })
+                setBuyerName(id.name)
+                setBuyerPhone(id.phone)
+                onConnected?.(id)
+                setStep('syncing')
+              }}
+            />
+          </div>
+        )}
+
+        {/* ── Syncing identity (fetch profile / points / loyalty) ── */}
+        {step === 'syncing' && (
+          <div className="px-5 pb-10 pt-4">
+            <p className="font-extrabold text-gray-900 text-lg mb-1">Halo, {(buyerName || DEMO_BUYER_DATA.name).split(' ')[0]} 👋</p>
+            <p className="text-sm text-gray-500 mb-5">Menyinkron identitas AstraPay-mu...</p>
+            <IdentitySync onDone={() => { setEditingInfo(false); setStep('buyer_info'); onDemoProgress?.('checkout') }} />
+          </div>
+        )}
+
+        {/* ── Info Pembeli (Identity Card — first visible step) ── */}
+        {step === 'buyer_info' && (
+          <div className="px-5 pb-28 pt-3">
+            <div className="flex items-center gap-3 mb-4">
+              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
+                <X size={18} />
+              </button>
+              <h3 className="font-extrabold text-gray-900 text-lg">Info Pembeli</h3>
+            </div>
+
+            {/* Identity card */}
+            {!editingInfo ? (
+              <div className="rounded-2xl overflow-hidden mb-2" style={{ background: 'linear-gradient(135deg, #0f1c40 0%, #1E3A8A 100%)' }}>
+                <div className="px-4 py-4 flex items-center gap-3">
+                  <div className="w-11 h-11 bg-white/20 rounded-full flex items-center justify-center text-white font-extrabold text-base flex-shrink-0">
+                    {(buyerName || 'A').charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-extrabold text-white text-base leading-tight">Halo, {(buyerName || 'Pembeli').split(' ')[0]} 👋</p>
+                    <p className="text-blue-200 text-xs mt-0.5">{buyerName}</p>
+                    <p className="text-blue-300 text-xs">{buyerPhone}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                    <div className="bg-white/15 rounded-lg px-2 py-1 flex items-center gap-1">
+                      <span className="text-[10px] text-blue-100 font-medium">Connected AstraPay</span>
+                      <span className="text-green-400 text-[10px] font-bold">✓</span>
+                    </div>
+                    <button onClick={() => setEditingInfo(true)} className="text-[10px] text-blue-200 underline font-medium">Edit</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 mb-2">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nama Lengkap</label>
+                  <input type="text" value={buyerName} onChange={(e) => { setBuyerName(e.target.value); setFormErrors((p) => ({ ...p, nama: '' })) }}
+                    placeholder="contoh: Justin Bieber" autoFocus
+                    className={`w-full border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 transition-colors ${formErrors.nama ? 'border-red-300 bg-red-50' : 'bg-gray-50 border-gray-200 focus:bg-white'}`}
+                  />
+                  {formErrors.nama && <p className="text-xs text-red-500 mt-1">{formErrors.nama}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nomor WhatsApp</label>
+                  <input type="tel" value={buyerPhone} onChange={(e) => { setBuyerPhone(e.target.value); setFormErrors((p) => ({ ...p, wa: '' })) }}
+                    placeholder="08123456789"
+                    className={`w-full border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 transition-colors ${formErrors.wa ? 'border-red-300 bg-red-50' : 'bg-gray-50 border-gray-200 focus:bg-white'}`}
+                  />
+                  {formErrors.wa && <p className="text-xs text-red-500 mt-1">{formErrors.wa}</p>}
+                </div>
+                {isLinked && (
+                  <button onClick={() => { setBuyerName(DEMO_BUYER_DATA.name); setBuyerPhone(buyerPhone || DEMO_BUYER_DATA.phone); setEditingInfo(false); setFormErrors((p) => ({ ...p, nama: '', wa: '' })) }}
+                    className="text-xs text-app-blue underline font-medium">Gunakan data AstraPay</button>
+                )}
+              </div>
+            )}
+
+            {/* Sticky bottom */}
+            <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t border-gray-100 px-5 py-3 z-10">
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="text-xs text-gray-500">Total</span>
+                <span className="text-base font-extrabold text-app-blue">{formatRp(total)}</span>
+              </div>
+              <button onClick={() => { if (validateIdentity()) setStep('shipping') }}
+                className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm"
+              >
+                Lanjut — Pengiriman <ArrowRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Shipping (+ conditional address) ── */}
+        {step === 'shipping' && (
+          <div className="px-5 pb-28 pt-3">
+            <div className="flex items-center gap-3 mb-5">
+              <button onClick={() => setStep('buyer_info')} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
+                <ArrowLeft size={16} />
               </button>
               <h3 className="font-extrabold text-gray-900 text-lg">Metode Pengiriman</h3>
             </div>
@@ -686,7 +1162,9 @@ function CheckoutModal({
                   <span className="text-lg flex-shrink-0">{opt.icon}</span>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900 text-sm">{opt.name}</p>
-                    <p className="text-xs text-gray-400">{opt.duration}</p>
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-medium mt-0.5 px-1.5 py-0.5 rounded-full ${opt.id === 'pickup' ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-app-blue'}`}>
+                      {opt.id === 'pickup' ? '🏪 Hari ini' : `🚚 Estimasi ${opt.duration}`}
+                    </span>
                   </div>
                   <p className={`text-sm font-bold flex-shrink-0 ${opt.price === 0 ? 'text-green-600' : 'text-gray-700'}`}>
                     {opt.price === 0 ? 'Gratis' : formatRp(opt.price)}
@@ -698,106 +1176,49 @@ function CheckoutModal({
               ))}
             </div>
 
-            {/* Sticky bottom */}
-            <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t border-gray-100 px-5 py-3 z-10">
-              <div className="flex items-center justify-between mb-2.5">
-                <span className="text-xs text-gray-500">Total</span>
-                <span className="text-base font-extrabold text-app-blue">{formatRp(total)}</span>
-              </div>
-              <button onClick={() => { setStep('buyer_info'); onDemoProgress?.('checkout') }}
-                className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm"
-              >
-                Lanjut — Info Pembeli <ArrowRight size={16} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── Buyer Info ── */}
-        {step === 'buyer_info' && (
-          <div className="px-5 pb-28 pt-3">
-            <div className="flex items-center gap-3 mb-4">
-              <button onClick={() => setStep('shipping')} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
-                <ArrowLeft size={16} />
-              </button>
-              <h3 className="font-extrabold text-gray-900 text-lg">Info Pembeli</h3>
-            </div>
-
-            {/* Auto-fill card when linked */}
-            {isLinked && !editingInfo ? (
-              <div className="bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3.5 mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <CheckCircle size={13} className="text-app-blue" />
-                    <span className="text-xs text-app-blue font-semibold">Data dari AstraPay</span>
-                  </div>
-                  <button onClick={() => setEditingInfo(true)} className="text-[10px] text-app-blue underline font-medium">Edit</button>
+            {/* Address — only for couriers */}
+            {selectedShipping !== 'pickup' && (
+              <div className="space-y-3 mt-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                    <MapPin size={13} className="text-gray-400" /> Alamat Pengiriman
+                  </label>
+                  <textarea value={buyerAddress} onChange={(e) => { setBuyerAddress(e.target.value); setFormErrors((p) => ({ ...p, alamat: '' })) }}
+                    placeholder={'Jl. Contoh No. 123\nRT 01/RW 02'} rows={2}
+                    className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors resize-none ${formErrors.alamat ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                  />
+                  {formErrors.alamat && <p className="text-xs text-red-500 mt-1">{formErrors.alamat}</p>}
                 </div>
-                <p className="text-sm font-bold text-gray-900">{buyerName}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{buyerPhone}</p>
-                {selectedShipping !== 'pickup' && !buyerAddress && (
-                  <p className="text-xs text-amber-600 mt-2 font-medium">+ Isi alamat pengiriman di bawah</p>
-                )}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Kecamatan</label>
+                  <input type="text" value={kecamatan} onChange={(e) => { setKecamatan(e.target.value); setFormErrors((p) => ({ ...p, kecamatan: '' })) }}
+                    placeholder="contoh: Coblong"
+                    className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors ${formErrors.kecamatan ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                  />
+                  {formErrors.kecamatan && <p className="text-xs text-red-500 mt-1">{formErrors.kecamatan}</p>}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Kota</label>
+                    <select value={kota} onChange={(e) => { setKota(e.target.value); setFormErrors((p) => ({ ...p, kota: '' })) }}
+                      className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors appearance-none ${formErrors.kota ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                    >
+                      <option value="">Pilih kota</option>
+                      {CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    {formErrors.kota && <p className="text-xs text-red-500 mt-1">{formErrors.kota}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Kode Pos</label>
+                    <input type="text" value={kodePos} onChange={(e) => { setKodePos(e.target.value.replace(/\D/g, '').slice(0, 5)); setFormErrors((p) => ({ ...p, kodePos: '' })) }}
+                      placeholder="12345" maxLength={5}
+                      className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors ${formErrors.kodePos ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                    />
+                    {formErrors.kodePos && <p className="text-xs text-red-500 mt-1">{formErrors.kodePos}</p>}
+                  </div>
+                </div>
               </div>
-            ) : null}
-
-            <div className="space-y-3 mb-4">
-              {(!isLinked || editingInfo) && (
-                <>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nama Lengkap</label>
-                    <input type="text" value={buyerName} onChange={(e) => { setBuyerName(e.target.value); setFormErrors((p) => ({ ...p, nama: '' })) }}
-                      placeholder="contoh: Justin Bieber" autoFocus
-                      className={`w-full border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 transition-colors ${formErrors.nama ? 'border-red-300 bg-red-50' : 'bg-gray-50 border-gray-200 focus:bg-white'}`}
-                    />
-                    {formErrors.nama && <p className="text-xs text-red-500 mt-1">{formErrors.nama}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nomor WhatsApp</label>
-                    <input type="tel" value={buyerPhone} onChange={(e) => { setBuyerPhone(e.target.value); setFormErrors((p) => ({ ...p, wa: '' })) }}
-                      placeholder="08123456789"
-                      className={`w-full border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 transition-colors ${formErrors.wa ? 'border-red-300 bg-red-50' : 'bg-gray-50 border-gray-200 focus:bg-white'}`}
-                    />
-                    {formErrors.wa && <p className="text-xs text-red-500 mt-1">{formErrors.wa}</p>}
-                  </div>
-                </>
-              )}
-
-              {selectedShipping !== 'pickup' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center gap-1.5">
-                      <MapPin size={13} className="text-gray-400" /> Alamat Pengiriman
-                    </label>
-                    <textarea value={buyerAddress} onChange={(e) => { setBuyerAddress(e.target.value); setFormErrors((p) => ({ ...p, alamat: '' })) }}
-                      placeholder={'Jl. Contoh No. 123\nRT 01/RW 02\nKelurahan Contoh'} rows={3}
-                      className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors resize-none ${formErrors.alamat ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
-                    />
-                    {formErrors.alamat && <p className="text-xs text-red-500 mt-1">{formErrors.alamat}</p>}
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Kota</label>
-                      <select value={kota} onChange={(e) => { setKota(e.target.value); setFormErrors((p) => ({ ...p, kota: '' })) }}
-                        className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors appearance-none ${formErrors.kota ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
-                      >
-                        <option value="">Pilih kota</option>
-                        {CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                      {formErrors.kota && <p className="text-xs text-red-500 mt-1">{formErrors.kota}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Kode Pos</label>
-                      <input type="text" value={kodePos} onChange={(e) => { setKodePos(e.target.value.replace(/\D/g, '').slice(0, 5)); setFormErrors((p) => ({ ...p, kodePos: '' })) }}
-                        placeholder="12345" maxLength={5}
-                        className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors ${formErrors.kodePos ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
-                      />
-                      {formErrors.kodePos && <p className="text-xs text-red-500 mt-1">{formErrors.kodePos}</p>}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
+            )}
 
             {/* Sticky bottom */}
             <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t border-gray-100 px-5 py-3 z-10">
@@ -805,7 +1226,7 @@ function CheckoutModal({
                 <span className="text-xs text-gray-500">Total</span>
                 <span className="text-base font-extrabold text-app-blue">{formatRp(total)}</span>
               </div>
-              <button onClick={() => { if (validateBuyerInfo()) setStep('review') }}
+              <button onClick={() => { if (validateShipping()) setStep('review') }}
                 className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm"
               >
                 Lanjut — Review Pesanan <ArrowRight size={16} />
@@ -818,7 +1239,7 @@ function CheckoutModal({
         {step === 'review' && (
           <div className="px-5 pb-8 pt-3">
             <div className="flex items-center gap-3 mb-5">
-              <button onClick={() => setStep('buyer_info')} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
+              <button onClick={() => setStep('shipping')} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
                 <ArrowLeft size={16} />
               </button>
               <h3 className="font-extrabold text-gray-900 text-lg">Review Pesanan</h3>
@@ -852,7 +1273,7 @@ function CheckoutModal({
               </div>
             </div>
 
-            {/* Buyer info summary */}
+            {/* Receiver + payment (AstraPay-only) */}
             <div className="bg-gray-50 rounded-2xl px-4 py-3 mb-3 flex items-center justify-between">
               <div>
                 <p className="text-xs text-gray-400 mb-0.5">Penerima</p>
@@ -862,44 +1283,71 @@ function CheckoutModal({
               <button onClick={() => setStep('buyer_info')} className="text-[10px] text-app-blue underline font-medium">Edit</button>
             </div>
 
-            {/* Payment method — AstraPay hero */}
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Pembayaran</p>
-            <button onClick={() => setSelectedPayment('astrapay')}
-              className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all text-left mb-2 ${selectedPayment === 'astrapay' ? 'border-app-blue bg-app-blue-pale' : 'border-gray-100 bg-white hover:border-gray-200'}`}
-            >
-              <div className="w-10 h-10 bg-app-blue rounded-xl flex items-center justify-center flex-shrink-0">
-                <span className="text-white font-extrabold text-xs">AP</span>
+            <div className="flex items-center gap-3 p-3.5 rounded-2xl border border-app-blue/20 bg-app-blue-pale mb-3">
+              <div className="w-9 h-9 bg-app-blue rounded-xl flex items-center justify-center flex-shrink-0">
+                <span className="text-white font-extrabold text-[10px]">AP</span>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="font-bold text-sm text-app-blue">AstraPay</p>
-                  <span className="text-[9px] bg-amber-100 text-amber-700 font-bold px-1.5 py-0.5 rounded-full">⭐ Rekomendasi</span>
+                  <span className="text-[9px] bg-green-100 text-green-700 font-bold px-1.5 py-0.5 rounded-full">Terhubung ✓</span>
                 </div>
-                <p className="text-xs text-gray-400 mt-0.5">+{pointsEarned} AstraPoints per transaksi ini</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">Bayar langsung dari saldo — tanpa isi data lagi</p>
               </div>
-              <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${selectedPayment === 'astrapay' ? 'border-app-blue bg-app-blue' : 'border-gray-300'}`}>
-                {selectedPayment === 'astrapay' && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
-              </div>
-            </button>
-
-            <div className="space-y-2 mb-5">
-              {([
-                { id: 'transfer' as PaymentMethod, name: 'Transfer Bank', desc: 'BCA, Mandiri, BNI' },
-                { id: 'cod'      as PaymentMethod, name: 'Bayar di Tempat', desc: 'Bayar saat diterima' },
-              ] as { id: PaymentMethod; name: string; desc: string }[]).map((method) => (
-                <button key={method.id} onClick={() => setSelectedPayment(method.id)}
-                  className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all text-left ${selectedPayment === method.id ? 'border-app-blue bg-app-blue-pale' : 'border-gray-100 bg-white hover:border-gray-200'}`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm text-gray-700">{method.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{method.desc}</p>
-                  </div>
-                  <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${selectedPayment === method.id ? 'border-app-blue bg-app-blue' : 'border-gray-300'}`}>
-                    {selectedPayment === method.id && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
-                  </div>
-                </button>
-              ))}
             </div>
+
+            {/* Reward transaksi ini */}
+            <div className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3.5 mb-3">
+              <p className="text-xs font-extrabold text-amber-800 uppercase tracking-wide mb-2.5">Reward transaksi ini</p>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-base w-5 text-center">⭐</span>
+                  <span className="text-sm text-gray-700 flex-1">AstraPoints</span>
+                  <span className="text-sm font-extrabold text-app-blue">+{pointsEarned}</span>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <span className="text-base w-5 text-center">🎟</span>
+                  <span className="text-sm text-gray-700 flex-1">Loyalty Stamp {seller.name}</span>
+                  <span className="text-sm font-extrabold text-green-600">+1</span>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <span className="text-base w-5 text-center">⚡</span>
+                  <span className="text-sm text-gray-700 flex-1">Checkout otomatis berikutnya</span>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <span className="text-base w-5 text-center">💰</span>
+                  <span className="text-sm text-gray-700 flex-1">Tukar 500 poin</span>
+                  <span className="text-sm font-semibold text-gray-500">= Rp5.000</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Loyalty preview */}
+            {(() => {
+              const card = DEMO_BUYER_DATA.loyaltyCards.find((c) => c.store === seller.name)
+              const current = card?.stamps ?? 0
+              const max = card?.maxStamps ?? 10
+              return (
+                <div className="bg-white border border-gray-100 rounded-2xl px-4 py-3.5 mb-5 shadow-sm">
+                  <div className="flex items-center justify-between mb-2.5">
+                    <p className="text-xs font-bold text-gray-800">Loyalty {seller.name}</p>
+                    <span className="text-[10px] text-green-600 font-bold">{current} → {current + 1} stamp</span>
+                  </div>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {Array.from({ length: max }).map((_, i) => (
+                      <div key={i}
+                        className={`w-[22px] h-[22px] rounded-full flex items-center justify-center transition-colors ${
+                          i < current ? 'bg-app-blue' : i === current ? 'bg-green-500 ring-2 ring-green-200 animate-pulse' : 'bg-gray-100'
+                        }`}
+                      >
+                        {(i < current || i === current) && <Star size={10} className="text-white" fill="currentColor" />}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-2">Bayar sekarang untuk mengisi 1 stamp lagi.</p>
+                </div>
+              )
+            })()}
 
             <button onClick={() => setStep('paying')}
               className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-base"
@@ -1085,8 +1533,11 @@ function CheckoutModal({
             </div>
             <h3 className="text-xl font-extrabold text-gray-900 mb-0.5">Pembayaran Berhasil!</h3>
             <p className="text-3xl font-extrabold text-green-600 tracking-tight leading-none mb-1">{formatRp(total)}</p>
-            <p className="text-sm text-gray-400 mb-0.5">via {selectedPayment === 'astrapay' ? 'AstraPay' : selectedPayment === 'transfer' ? 'Transfer Bank' : 'COD'} · {seller.name}</p>
-            {orderId && <p className="text-xs text-gray-300 font-mono mb-4">#{orderId.slice(0, 8).toUpperCase()}</p>}
+            <p className="text-sm text-gray-400 mb-0.5">via AstraPay · {seller.name}</p>
+            {orderId && <p className="text-xs text-gray-300 font-mono mb-1">#{orderId.slice(0, 8).toUpperCase()}</p>}
+            <p className="text-xs text-gray-500 mb-4">
+              {selectedShipping === 'pickup' ? '🏪 Estimasi siap diambil hari ini' : `🚚 Estimasi tiba ${shipping.duration}`}
+            </p>
 
             {/* AstraPoints earned */}
             <div className="bg-app-blue rounded-2xl px-4 py-4 text-white flex items-center justify-between mb-3 animate-fadein" style={{ animationDelay: '0.2s' }}>
@@ -1117,6 +1568,17 @@ function CheckoutModal({
                 </div>
               </div>
               <span className="text-xs text-green-600 font-bold flex-shrink-0">+1 stamp</span>
+            </div>
+
+            {/* Consumer ownership */}
+            <div className="bg-green-50 border border-green-100 rounded-2xl px-4 py-3 flex items-center gap-3 mb-5 animate-fadein text-left" style={{ animationDelay: '0.5s' }}>
+              <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                <CheckCircle size={16} className="text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-green-800">Kamu sekarang member {seller.name}</p>
+                <p className="text-[11px] text-green-600 mt-0.5">Datamu tersimpan — checkout berikutnya makin cepat.</p>
+              </div>
             </div>
 
             <div className="animate-fadein space-y-2" style={{ animationDelay: '0.6s' }}>
@@ -1281,12 +1743,13 @@ function KategoriPanel({ categories, categoryFilter, products, onSelect }: {
 
 // ── Pesanan Tab Panel ─────────────────────────────────────────────────────────
 
-function PesananPanel({ isDemoMode }: { isDemoMode: boolean }) {
-  const orders = isDemoMode ? DEMO_ORDERS_DATA : []
+function PesananPanel({ isDemoMode, myOrders }: { isDemoMode: boolean; myOrders: MyOrder[] }) {
+  const demoOrders = isDemoMode ? DEMO_ORDERS_DATA : []
+  const hasAny = myOrders.length > 0 || demoOrders.length > 0
   return (
     <div className="px-4 pt-4 pb-24">
       <p className="font-extrabold text-gray-900 text-base mb-4">Pesanan Saya</p>
-      {orders.length === 0 ? (
+      {!hasAny ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
             <Package size={28} className="text-gray-400" />
@@ -1296,7 +1759,29 @@ function PesananPanel({ isDemoMode }: { isDemoMode: boolean }) {
         </div>
       ) : (
         <div className="space-y-3">
-          {orders.map((order) => {
+          {/* Real orders created this session (newest first) */}
+          {myOrders.map((order) => {
+            const { color, Icon } = getCategoryStyle(order.category)
+            return (
+              <div key={order.id} className="bg-white border-2 border-app-blue/30 rounded-2xl p-4 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: color }}>
+                    <Icon size={16} className="text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm truncate">{order.product_name}</p>
+                    <p className="text-[11px] text-gray-400">{order.store} · Baru saja · #{order.id.slice(0, 8).toUpperCase()}</p>
+                    <div className="flex items-center justify-between mt-1.5">
+                      <p className="font-bold text-app-blue text-sm">{formatRp(order.total)}</p>
+                      <span className="text-[10px] bg-app-blue-pale text-app-blue font-bold px-2 py-0.5 rounded-full">{order.status}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+
+          {demoOrders.map((order) => {
             const { color, Icon } = getCategoryStyle(order.category)
             return (
               <div key={order.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
@@ -1357,11 +1842,11 @@ function AkunPanel({ isDemoMode, isLinked, onLink, astraPoints, bonusStamps }: {
         <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
           <User size={28} className="text-gray-400" />
         </div>
-        <p className="font-bold text-gray-900 mb-2">Hubungkan AstraPay</p>
+        <p className="font-bold text-gray-900 mb-2">Masuk dengan AstraPay</p>
         <p className="text-sm text-gray-500 mb-6 max-w-[260px]">
           {bindingState === 'waiting'
             ? 'Selesaikan di tab AstraPay, lalu kembali ke sini.'
-            : 'Hubungkan sekali — checkout jadi lebih cepat, data terisi otomatis.'}
+            : 'Hubungkan akun hanya sekali — checkout jadi lebih cepat, data terisi otomatis.'}
         </p>
         {bindingState === 'waiting' && bindingUrl && (
           <a href={bindingUrl} target="_blank" rel="noopener noreferrer"
@@ -1373,7 +1858,7 @@ function AkunPanel({ isDemoMode, isLinked, onLink, astraPoints, bonusStamps }: {
         <button onClick={handleBind} disabled={bindingState === 'opening'}
           className={`w-full font-bold py-4 rounded-2xl text-sm transition-colors ${bindingState === 'waiting' ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-app-blue hover:bg-app-blue-light text-white disabled:opacity-60'}`}
         >
-          {bindingState === 'opening' ? 'Membuka AstraPay...' : bindingState === 'waiting' ? 'Sudah selesai — Hubungkan' : 'Hubungkan AstraPay'}
+          {bindingState === 'opening' ? 'Membuka AstraPay...' : bindingState === 'waiting' ? 'Sudah selesai — Hubungkan' : 'Masuk dengan AstraPay'}
         </button>
       </div>
     )
@@ -1490,11 +1975,15 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
   const [wishlist,         setWishlist]         = useState<Set<string>>(new Set())
   const [isDemoMode,       setIsDemoMode]       = useState(false)
   const [isLinked,         setIsLinked]         = useState(false)
+  const [buyerIdentity,    setBuyerIdentity]    = useState<BuyerIdentity | null>(null)
   const [demoProgress,     setDemoProgress]     = useState<DemoProgress>('browse')
   const [toastVisible,     setToastVisible]     = useState(false)
   const [pointsBannerOpen, setPointsBannerOpen] = useState(true)
   const [astraPoints,      setAstraPoints]      = useState(DEMO_BUYER_DATA.astraPoints)
   const [bonusStamps,      setBonusStamps]      = useState<Record<string, number>>({})
+  const [myOrders,         setMyOrders]         = useState<MyOrder[]>([])
+  const [showWelcome,      setShowWelcome]      = useState(false)
+  const [hydrated,         setHydrated]         = useState(false)
 
   // Cart state
   const [cart,             setCart]             = useState<CartItem[]>([])
@@ -1515,6 +2004,43 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
       setTimeout(() => setToastVisible(false), 5500)
     }
   }, [])
+
+  // Hydrate persisted identity/points/loyalty/orders once on mount.
+  useEffect(() => {
+    const linked = lsGet(LS_KEYS.linked, false)
+    setIsLinked(linked)
+    setBuyerIdentity(lsGet<BuyerIdentity | null>(LS_KEYS.identity, null))
+    setAstraPoints(lsGet(LS_KEYS.points, DEMO_BUYER_DATA.astraPoints))
+    setBonusStamps(lsGet<Record<string, number>>(LS_KEYS.stamps, {}))
+    setMyOrders(lsGet<MyOrder[]>(LS_KEYS.orders, []))
+    setHydrated(true)
+  }, [])
+
+  // Persist after hydration so we never clobber stored values with defaults.
+  useEffect(() => { if (hydrated) lsSet(LS_KEYS.linked, isLinked) }, [hydrated, isLinked])
+  useEffect(() => { if (hydrated) lsSet(LS_KEYS.identity, buyerIdentity) }, [hydrated, buyerIdentity])
+  useEffect(() => { if (hydrated) lsSet(LS_KEYS.points, astraPoints) }, [hydrated, astraPoints])
+  useEffect(() => { if (hydrated) lsSet(LS_KEYS.stamps, bonusStamps) }, [hydrated, bonusStamps])
+  useEffect(() => { if (hydrated) lsSet(LS_KEYS.orders, myOrders) }, [hydrated, myOrders])
+
+  // AstraPay Welcome gate: once per browser, until connected or dismissed.
+  useEffect(() => {
+    if (!hydrated || !seller) return
+    const seen = lsGet(LS_KEYS.seen, false)
+    if (!isLinked && !seen) setShowWelcome(true)
+  }, [hydrated, seller, isLinked])
+
+  const handleIdentityConnected = (identity: BuyerIdentity) => {
+    setIsLinked(true)
+    setBuyerIdentity(identity)
+    lsSet(LS_KEYS.seen, true)
+    setShowWelcome(false)
+  }
+
+  const handleGuest = () => {
+    lsSet(LS_KEYS.seen, true)
+    setShowWelcome(false)
+  }
 
   useEffect(() => {
     fetch(`/api/sellers/${params.slug}`)
@@ -1815,7 +2341,7 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
       )}
 
       {/* ── Pesanan tab ── */}
-      {activeTab === 'pesanan' && <PesananPanel isDemoMode={isDemoMode} />}
+      {activeTab === 'pesanan' && <PesananPanel isDemoMode={isDemoMode} myOrders={myOrders} />}
 
       {/* ── Akun tab ── */}
       {activeTab === 'akun' && <AkunPanel isDemoMode={isDemoMode} isLinked={isLinked} onLink={() => setIsLinked(true)} astraPoints={astraPoints} bonusStamps={bonusStamps} />}
@@ -1858,11 +2384,23 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
           onClose={() => { setIsCheckoutOpen(false); setCart([]) }}
           isDemoMode={isDemoMode}
           isLinked={isLinked}
+          identity={buyerIdentity}
+          onConnected={handleIdentityConnected}
           onDemoProgress={setDemoProgress}
-          onSuccess={({ points, sellerName }) => {
+          onSuccess={({ points, sellerName, order }) => {
             setAstraPoints((p) => p + points)
             setBonusStamps((prev) => ({ ...prev, [sellerName]: (prev[sellerName] ?? 0) + 1 }))
+            setMyOrders((prev) => [order, ...prev])
           }}
+        />
+      )}
+
+      {/* AstraPay Welcome — store-entry identity gate */}
+      {showWelcome && seller && (
+        <WelcomeAstraPay
+          sellerName={seller.name}
+          onConnected={handleIdentityConnected}
+          onGuest={handleGuest}
         />
       )}
     </div>

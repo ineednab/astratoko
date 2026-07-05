@@ -27,24 +27,38 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = await req.json()
-  const { seller_id, product_id, product_name, price, category, buyer_name, buyer_phone } =
-    body as Record<string, string>
+  const {
+    seller_id, product_id, product_name, price, category,
+    buyer_name, buyer_phone,
+    quantity, shipping_cost, shipping_method,
+    buyer_address, buyer_city,
+  } = body as Record<string, string>
 
   if (!seller_id || !product_name || !price) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
+  const subtotal     = Number(price)
+  const shippingCost = Number(shipping_cost ?? 0)
+  const totalPrice   = subtotal + shippingCost
+
   const { data, error } = await supabase
     .from('orders')
     .insert({
       seller_id,
-      product_id: product_id ?? null,
+      product_id:      product_id ?? null,
       product_name,
-      price: Number(price),
-      category: category ?? '',
-      buyer_name: buyer_name ?? '',
-      buyer_phone: buyer_phone ?? '',
-      status: 'paid',
+      price:           subtotal,
+      total_price:     totalPrice,
+      quantity:        Number(quantity ?? 1),
+      shipping_cost:   shippingCost,
+      shipping_method: shipping_method ?? '',
+      buyer_address:   buyer_address ?? '',
+      buyer_city:      buyer_city ?? '',
+      category:        category ?? '',
+      buyer_name:      buyer_name ?? '',
+      buyer_phone:     buyer_phone ?? '',
+      status:          'paid',
     })
     .select()
     .single()
