@@ -562,6 +562,38 @@ function AstraPayConnect({
     setPhase('waiting')
   }
 
+  // Auto-advance when user returns from AstraPay tab (sandbox rarely writes DB before redirect).
+  useEffect(() => {
+    if (phase !== 'waiting') return
+    let advanced = false
+    const identity: BuyerIdentity = { name: DEMO_BUYER_DATA.name, phone: cleanPhone }
+
+    const advance = () => {
+      if (advanced) return
+      advanced = true
+      onConnected(identity)
+    }
+
+    const tryBound = async () => {
+      if (advanced) return
+      if (await checkAstraPayBinding(cleanPhone)) advance()
+    }
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') advance()
+    }
+
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', advance)
+    const poll = setInterval(tryBound, 3000)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', advance)
+      clearInterval(poll)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, cleanPhone])
+
   if (phase === 'waiting') {
     return (
       <div className="space-y-3">
@@ -570,7 +602,7 @@ function AstraPayConnect({
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
             <p className="text-sm font-semibold text-app-blue">Menunggu verifikasi AstraPay</p>
           </div>
-          <p className="text-xs text-gray-500 leading-relaxed">Selesaikan OTP &amp; PIN di tab AstraPay, lalu kembali ke sini.</p>
+          <p className="text-xs text-gray-500 leading-relaxed">Selesaikan OTP &amp; PIN di tab AstraPay — otomatis lanjut saat kamu kembali ke sini.</p>
         </div>
         {bindingUrl && (
           <a href={bindingUrl} target="_blank" rel="noopener noreferrer"
@@ -770,24 +802,21 @@ function CheckoutModal({
   onDemoProgress?: (p: DemoProgress) => void
   onSuccess?: (opts: { points: number; sellerName: string; order: MyOrder }) => void
 }) {
-  const DEMO_BUYERS = ['Justin Bieber', 'Dua Lipa', 'Sabrina Carpenter', 'Taylor Swift', 'Ariana Grande', 'Billie Eilish']
-
   // Identity resolution is invisible: linked buyers land on the greeting/Info path,
   // guests get the Connect fallback. Never shown as a numbered checkout step.
-  const [step,             setStep]             = useState<CheckoutStep>(isLinked ? 'syncing' : 'checking')
+  const [step,             setStep]             = useState<CheckoutStep>((isLinked || isDemoMode) ? 'syncing' : 'checking')
   const [buyerName,        setBuyerName]        = useState(() => {
     if (identity) return identity.name
-    if (isLinked) return DEMO_BUYER_DATA.name
-    if (isDemoMode) return DEMO_BUYERS[Math.floor(Math.random() * DEMO_BUYERS.length)]
+    if (isLinked || isDemoMode) return DEMO_BUYER_DATA.name
     return ''
   })
-  const [buyerPhone,       setBuyerPhone]       = useState(() => identity?.phone ?? (isLinked ? DEMO_BUYER_DATA.phone : ''))
+  const [buyerPhone,       setBuyerPhone]       = useState(() => identity?.phone ?? ((isLinked || isDemoMode) ? DEMO_BUYER_DATA.phone : ''))
   const [buyerAddress,     setBuyerAddress]     = useState('')
   const [kecamatan,        setKecamatan]        = useState('')
   const [kota,             setKota]             = useState('')
   const [kodePos,          setKodePos]          = useState('')
   const [formErrors,       setFormErrors]       = useState<Record<string, string>>({})
-  const [editingInfo,      setEditingInfo]      = useState(!isLinked)
+  const [editingInfo,      setEditingInfo]      = useState(!(isLinked || isDemoMode))
   const [selectedShipping, setSelectedShipping] = useState('pickup')
   const [selectedPayment]                       = useState<PaymentMethod>('astrapay')
   const [orderId,          setOrderId]          = useState<string | null>(null)
@@ -805,6 +834,13 @@ function CheckoutModal({
   // Invisible identity resolution — runs once when a guest opens checkout.
   useEffect(() => {
     if (step !== 'checking') return
+    if (isDemoMode) {
+      onConnected?.(DEMO_IDENTITY)
+      setBuyerName(DEMO_BUYER_DATA.name)
+      setBuyerPhone(DEMO_BUYER_DATA.phone)
+      setStep('syncing')
+      return
+    }
     let cancelled = false
     const started = Date.now()
     ;(async () => {
@@ -994,6 +1030,10 @@ function CheckoutModal({
     verified:  { text: 'Pembayaran diterima ✓', color: 'text-green-500' },
   }
   const pointsEarned = totalQty * 50
+  const loyaltyCard = DEMO_BUYER_DATA.loyaltyCards.find((c) => c.store === seller.name)
+  const stampsBefore = loyaltyCard?.stamps ?? 0
+  const stampsAfter = stampsBefore + 1
+  const maxStamps = loyaltyCard?.maxStamps ?? 10
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center" onClick={isDark ? undefined : onClose}>
@@ -1292,62 +1332,53 @@ function CheckoutModal({
                   <p className="font-bold text-sm text-app-blue">AstraPay</p>
                   <span className="text-[9px] bg-green-100 text-green-700 font-bold px-1.5 py-0.5 rounded-full">Terhubung ✓</span>
                 </div>
-                <p className="text-[11px] text-gray-500 mt-0.5">Bayar langsung dari saldo — tanpa isi data lagi</p>
+                <p className="text-[11px] text-gray-700 mt-0.5 font-medium">Pembayaran otomatis dengan AstraPay.</p>
+                <p className="text-[10px] text-gray-500">Tidak perlu isi data pembeli lagi.</p>
               </div>
             </div>
 
-            {/* Reward transaksi ini */}
+            {/* Yang Kamu Dapat Hari Ini */}
             <div className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3.5 mb-3">
-              <p className="text-xs font-extrabold text-amber-800 uppercase tracking-wide mb-2.5">Reward transaksi ini</p>
+              <p className="text-xs font-extrabold text-amber-800 mb-2.5">Yang Kamu Dapat Hari Ini</p>
               <div className="space-y-2">
                 <div className="flex items-center gap-2.5">
                   <span className="text-base w-5 text-center">⭐</span>
-                  <span className="text-sm text-gray-700 flex-1">AstraPoints</span>
-                  <span className="text-sm font-extrabold text-app-blue">+{pointsEarned}</span>
+                  <span className="text-sm text-gray-700 flex-1">+{pointsEarned} AstraPoints</span>
                 </div>
                 <div className="flex items-center gap-2.5">
                   <span className="text-base w-5 text-center">🎟</span>
-                  <span className="text-sm text-gray-700 flex-1">Loyalty Stamp {seller.name}</span>
-                  <span className="text-sm font-extrabold text-green-600">+1</span>
+                  <span className="text-sm text-gray-700 flex-1">+1 Loyalty Stamp</span>
                 </div>
                 <div className="flex items-center gap-2.5">
                   <span className="text-base w-5 text-center">⚡</span>
-                  <span className="text-sm text-gray-700 flex-1">Checkout otomatis berikutnya</span>
+                  <span className="text-sm text-gray-700 flex-1">Checkout lebih cepat berikutnya</span>
                 </div>
                 <div className="flex items-center gap-2.5">
                   <span className="text-base w-5 text-center">💰</span>
-                  <span className="text-sm text-gray-700 flex-1">Tukar 500 poin</span>
-                  <span className="text-sm font-semibold text-gray-500">= Rp5.000</span>
+                  <span className="text-sm text-gray-700 flex-1">500 poin = Rp5.000 saldo AstraPay</span>
                 </div>
               </div>
             </div>
 
             {/* Loyalty preview */}
-            {(() => {
-              const card = DEMO_BUYER_DATA.loyaltyCards.find((c) => c.store === seller.name)
-              const current = card?.stamps ?? 0
-              const max = card?.maxStamps ?? 10
-              return (
-                <div className="bg-white border border-gray-100 rounded-2xl px-4 py-3.5 mb-5 shadow-sm">
-                  <div className="flex items-center justify-between mb-2.5">
-                    <p className="text-xs font-bold text-gray-800">Loyalty {seller.name}</p>
-                    <span className="text-[10px] text-green-600 font-bold">{current} → {current + 1} stamp</span>
+            <div className="bg-white border border-gray-100 rounded-2xl px-4 py-3.5 mb-5 shadow-sm">
+              <div className="flex items-center justify-between mb-2.5">
+                <p className="text-xs font-bold text-gray-800">Loyalty {seller.name}</p>
+                <span className="text-[10px] text-green-600 font-bold">{stampsBefore} → {stampsAfter} Stamp</span>
+              </div>
+              <div className="flex gap-1.5 flex-wrap">
+                {Array.from({ length: maxStamps }).map((_, i) => (
+                  <div key={i}
+                    className={`w-[22px] h-[22px] rounded-full flex items-center justify-center transition-colors ${
+                      i < stampsBefore ? 'bg-app-blue' : i === stampsBefore ? 'bg-green-500 ring-2 ring-green-200 animate-pulse' : 'bg-gray-100'
+                    }`}
+                  >
+                    {(i < stampsBefore || i === stampsBefore) && <Star size={10} className="text-white" fill="currentColor" />}
                   </div>
-                  <div className="flex gap-1.5 flex-wrap">
-                    {Array.from({ length: max }).map((_, i) => (
-                      <div key={i}
-                        className={`w-[22px] h-[22px] rounded-full flex items-center justify-center transition-colors ${
-                          i < current ? 'bg-app-blue' : i === current ? 'bg-green-500 ring-2 ring-green-200 animate-pulse' : 'bg-gray-100'
-                        }`}
-                      >
-                        {(i < current || i === current) && <Star size={10} className="text-white" fill="currentColor" />}
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-gray-400 mt-2">Bayar sekarang untuk mengisi 1 stamp lagi.</p>
-                </div>
-              )
-            })()}
+                ))}
+              </div>
+              <p className="text-[10px] text-gray-400 mt-2">Bayar sekarang untuk mengisi 1 stamp lagi.</p>
+            </div>
 
             <button onClick={() => setStep('paying')}
               className="w-full bg-app-blue hover:bg-app-blue-light text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-base"
@@ -1539,46 +1570,30 @@ function CheckoutModal({
               {selectedShipping === 'pickup' ? '🏪 Estimasi siap diambil hari ini' : `🚚 Estimasi tiba ${shipping.duration}`}
             </p>
 
-            {/* AstraPoints earned */}
-            <div className="bg-app-blue rounded-2xl px-4 py-4 text-white flex items-center justify-between mb-3 animate-fadein" style={{ animationDelay: '0.2s' }}>
-              <div className="text-left">
-                <p className="text-xs text-blue-200 mb-0.5">AstraPoints diperoleh</p>
-                <p className="text-3xl font-extrabold tracking-tight leading-none">+{pointsEarned}</p>
-                <p className="text-[10px] text-blue-200 mt-1">≈ {formatRp(pointsEarned * 10)} saldo AstraPay</p>
-              </div>
-              <Star size={36} className="text-astrapay-gold flex-shrink-0" fill="currentColor" />
+            {/* Reward ditambahkan */}
+            <div className="bg-green-50 border border-green-100 rounded-2xl px-4 py-3.5 mb-3 animate-fadein text-left" style={{ animationDelay: '0.2s' }}>
+              <p className="text-sm font-extrabold text-green-800 mb-1">🎉 Reward berhasil ditambahkan</p>
+              <p className="text-xs text-green-700 leading-relaxed">
+                +{pointsEarned} AstraPoints dan +1 Loyalty Stamp berhasil masuk ke akunmu.
+              </p>
             </div>
 
-            {/* Loyalty stamp optimistic update */}
-            <div className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 flex items-center gap-3 mb-5 animate-fadein text-left" style={{ animationDelay: '0.4s' }}>
-              <div className="w-8 h-8 bg-app-blue rounded-xl flex items-center justify-center flex-shrink-0">
-                <span className="text-white font-extrabold text-sm">{seller.initial}</span>
+            {/* Loyalty progress */}
+            <div className="bg-white border border-gray-100 rounded-2xl px-4 py-3.5 mb-5 animate-fadein text-left shadow-sm" style={{ animationDelay: '0.4s' }}>
+              <div className="flex items-center justify-between mb-2.5">
+                <p className="text-xs font-bold text-gray-800">Loyalty {seller.name}</p>
+                <span className="text-[10px] text-green-600 font-bold">{stampsAfter}/{maxStamps} Stamp</span>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-gray-800">Loyalty Stamp {seller.name}</p>
-                <div className="flex gap-1 mt-1.5">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="w-5 h-5 rounded-full flex items-center justify-center bg-app-blue">
-                      <Star size={9} className="text-white" fill="currentColor" />
-                    </div>
-                  ))}
-                  <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center">
-                    <span className="text-[8px] text-gray-400 font-bold">+1</span>
+              <div className="flex gap-1.5 flex-wrap">
+                {Array.from({ length: maxStamps }).map((_, i) => (
+                  <div key={i} className={`w-[22px] h-[22px] rounded-full flex items-center justify-center ${i < stampsAfter ? 'bg-app-blue' : 'bg-gray-100'}`}>
+                    {i < stampsAfter && <Star size={10} className="text-white" fill="currentColor" />}
                   </div>
-                </div>
+                ))}
               </div>
-              <span className="text-xs text-green-600 font-bold flex-shrink-0">+1 stamp</span>
-            </div>
-
-            {/* Consumer ownership */}
-            <div className="bg-green-50 border border-green-100 rounded-2xl px-4 py-3 flex items-center gap-3 mb-5 animate-fadein text-left" style={{ animationDelay: '0.5s' }}>
-              <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
-                <CheckCircle size={16} className="text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-green-800">Kamu sekarang member {seller.name}</p>
-                <p className="text-[11px] text-green-600 mt-0.5">Datamu tersimpan — checkout berikutnya makin cepat.</p>
-              </div>
+              <p className="text-[10px] text-gray-400 mt-2">
+                Sekarang kamu memiliki <strong className="text-gray-600">{stampsAfter} dari {maxStamps} stamp</strong> di {seller.name}.
+              </p>
             </div>
 
             <div className="animate-fadein space-y-2" style={{ animationDelay: '0.6s' }}>
@@ -1590,7 +1605,7 @@ function CheckoutModal({
                 </button>
               )}
               <button onClick={onClose} className="w-full border-2 border-gray-200 text-gray-600 font-semibold py-3.5 rounded-2xl hover:bg-gray-50 transition-colors text-sm">
-                Lanjut Belanja
+                Kembali ke Toko
               </button>
             </div>
           </div>
@@ -1673,6 +1688,18 @@ const DEMO_BUYER_DATA = {
   ],
 }
 
+function maskPhone(phone: string) {
+  if (phone.length <= 7) return phone
+  return `${phone.slice(0, 4)}••••${phone.slice(-3)}`
+}
+
+const DEMO_IDENTITY: BuyerIdentity = { name: DEMO_BUYER_DATA.name, phone: DEMO_BUYER_DATA.phone }
+
+function isDemoUrl() {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('demo') === 'true'
+}
+
 // ── Loyalty Stamp Card ────────────────────────────────────────────────────────
 
 function LoyaltyStampCard({ store, storeInitial, color, stamps, maxStamps, reward }: {
@@ -1686,7 +1713,7 @@ function LoyaltyStampCard({ store, storeInitial, color, stamps, maxStamps, rewar
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-bold text-gray-900 text-sm">{store}</p>
-          <p className="text-[10px] text-gray-400">{stamps} dari {maxStamps} stamp terkumpul</p>
+          <p className="text-[10px] text-gray-400">{stamps} dari {maxStamps} Stamp</p>
         </div>
       </div>
       <div className="flex gap-1.5 flex-wrap mb-3">
@@ -1747,8 +1774,7 @@ function PesananPanel({ isDemoMode, myOrders }: { isDemoMode: boolean; myOrders:
   const demoOrders = isDemoMode ? DEMO_ORDERS_DATA : []
   const hasAny = myOrders.length > 0 || demoOrders.length > 0
   return (
-    <div className="px-4 pt-4 pb-24">
-      <p className="font-extrabold text-gray-900 text-base mb-4">Pesanan Saya</p>
+    <div className="px-4 pt-2 pb-24">
       {!hasAny ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
@@ -1773,8 +1799,9 @@ function PesananPanel({ isDemoMode, myOrders }: { isDemoMode: boolean; myOrders:
                     <p className="text-[11px] text-gray-400">{order.store} · Baru saja · #{order.id.slice(0, 8).toUpperCase()}</p>
                     <div className="flex items-center justify-between mt-1.5">
                       <p className="font-bold text-app-blue text-sm">{formatRp(order.total)}</p>
-                      <span className="text-[10px] bg-app-blue-pale text-app-blue font-bold px-2 py-0.5 rounded-full">{order.status}</span>
+                      <span className="text-[10px] bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-full">{order.status}</span>
                     </div>
+                    <p className="text-[10px] text-green-600 font-semibold mt-1.5">Dibayar dengan AstraPay ✓</p>
                   </div>
                 </div>
               </div>
@@ -1866,32 +1893,35 @@ function AkunPanel({ isDemoMode, isLinked, onLink, astraPoints, bonusStamps }: {
   return (
     <div className="px-4 pt-4 pb-24">
       {/* Profile card */}
-      <div className="rounded-2xl overflow-hidden mb-4" style={{ background: 'linear-gradient(135deg, #0f1c40 0%, #1E3A8A 100%)' }}>
+      <div className="rounded-2xl overflow-hidden mb-3" style={{ background: 'linear-gradient(135deg, #0f1c40 0%, #1E3A8A 100%)' }}>
         <div className="px-5 pt-5 pb-3 flex items-center gap-3">
           <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-white font-extrabold text-lg flex-shrink-0">
             {buyer.name.charAt(0)}
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-extrabold text-white text-base">{buyer.name}</p>
-            <p className="text-blue-300 text-xs">{buyer.phone}</p>
+            <p className="text-blue-300 text-xs">{maskPhone(buyer.phone)}</p>
           </div>
           <div className="bg-white/15 rounded-lg px-2 py-1 flex items-center gap-1 flex-shrink-0">
             <span className="text-[10px] text-blue-200 font-medium">AstraPay</span>
             <span className="text-green-400 text-[10px] font-bold">✓</span>
           </div>
         </div>
-        <div className="mx-4 mb-4 bg-white/10 rounded-xl px-4 py-3 flex items-center justify-between">
-          <div>
-            <p className="text-blue-300 text-[10px] mb-0.5">AstraPoints</p>
-            <p className="text-2xl font-extrabold text-white">{astraPoints}</p>
-            <p className="text-[10px] text-blue-300 mt-0.5">≈ {formatRp(astraPoints * 10)} saldo</p>
+        <div className="mx-4 mb-4 bg-white/10 rounded-xl px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-blue-300 text-[10px] mb-0.5">AstraPoints</p>
+              <p className="text-2xl font-extrabold text-white">{astraPoints}</p>
+              <p className="text-[10px] text-blue-300 mt-0.5">≈ {formatRp(astraPoints * 10)} saldo AstraPay</p>
+            </div>
+            <Star size={32} className="text-astrapay-gold flex-shrink-0" fill="currentColor" />
           </div>
-          <Star size={32} className="text-astrapay-gold" fill="currentColor" />
+          <p className="text-[10px] text-blue-200/90 mt-2 pt-2 border-t border-white/10">{buyer.loyaltyCards.length} Loyalty Card aktif</p>
         </div>
       </div>
 
       {/* Loyalty cards */}
-      <p className="font-extrabold text-gray-900 text-sm mb-3">Loyalty Card</p>
+      <p className="font-extrabold text-gray-900 text-sm mb-3">Loyalty Cards</p>
       <div className="space-y-3">
         {buyer.loyaltyCards.map((card) => (
           <LoyaltyStampCard key={card.store} {...card} stamps={card.stamps + (bonusStamps[card.store] ?? 0)} />
@@ -1973,7 +2003,7 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
   const [categoryFilter,   setCategoryFilter]   = useState('all')
   const [sortMode,         setSortMode]         = useState<'popular'|'newest'|'price_asc'|'price_desc'>('popular')
   const [wishlist,         setWishlist]         = useState<Set<string>>(new Set())
-  const [isDemoMode,       setIsDemoMode]       = useState(false)
+  const [isDemoMode,       setIsDemoMode]       = useState(isDemoUrl)
   const [isLinked,         setIsLinked]         = useState(false)
   const [buyerIdentity,    setBuyerIdentity]    = useState<BuyerIdentity | null>(null)
   const [demoProgress,     setDemoProgress]     = useState<DemoProgress>('browse')
@@ -1984,6 +2014,7 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
   const [myOrders,         setMyOrders]         = useState<MyOrder[]>([])
   const [showWelcome,      setShowWelcome]      = useState(false)
   const [hydrated,         setHydrated]         = useState(false)
+  const persistReady = useRef(false)
 
   // Cart state
   const [cart,             setCart]             = useState<CartItem[]>([])
@@ -1996,8 +2027,7 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
   const productsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search)
-    const demo = searchParams.get('demo') === 'true'
+    const demo = isDemoUrl()
     setIsDemoMode(demo)
     if (demo) {
       setTimeout(() => setToastVisible(true), 600)
@@ -2006,35 +2036,57 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
   }, [])
 
   // Hydrate persisted identity/points/loyalty/orders once on mount.
+  // Demo mode pre-links Nabila — no real AstraPay bind needed for hackathon flow.
   useEffect(() => {
-    const linked = lsGet(LS_KEYS.linked, false)
+    const demo = isDemoUrl() || params.slug === 'tokorizky'
+    const linked = demo || lsGet(LS_KEYS.linked, false)
+    const identity = lsGet<BuyerIdentity | null>(LS_KEYS.identity, null) ?? (demo ? DEMO_IDENTITY : null)
+
     setIsLinked(linked)
-    setBuyerIdentity(lsGet<BuyerIdentity | null>(LS_KEYS.identity, null))
+    setBuyerIdentity(identity)
     setAstraPoints(lsGet(LS_KEYS.points, DEMO_BUYER_DATA.astraPoints))
     setBonusStamps(lsGet<Record<string, number>>(LS_KEYS.stamps, {}))
     setMyOrders(lsGet<MyOrder[]>(LS_KEYS.orders, []))
+
+    if (demo) {
+      lsSet(LS_KEYS.linked, true)
+      lsSet(LS_KEYS.identity, DEMO_IDENTITY)
+      lsSet(LS_KEYS.seen, true)
+    }
+
     setHydrated(true)
+    persistReady.current = true
   }, [])
 
-  // Persist after hydration so we never clobber stored values with defaults.
-  useEffect(() => { if (hydrated) lsSet(LS_KEYS.linked, isLinked) }, [hydrated, isLinked])
-  useEffect(() => { if (hydrated) lsSet(LS_KEYS.identity, buyerIdentity) }, [hydrated, buyerIdentity])
-  useEffect(() => { if (hydrated) lsSet(LS_KEYS.points, astraPoints) }, [hydrated, astraPoints])
-  useEffect(() => { if (hydrated) lsSet(LS_KEYS.stamps, bonusStamps) }, [hydrated, bonusStamps])
-  useEffect(() => { if (hydrated) lsSet(LS_KEYS.orders, myOrders) }, [hydrated, myOrders])
+  // Persist after hydration — skip until mount hydrate finishes to avoid clobbering LS with defaults.
+  useEffect(() => { if (persistReady.current) lsSet(LS_KEYS.linked, isLinked) }, [isLinked])
+  useEffect(() => { if (persistReady.current) lsSet(LS_KEYS.identity, buyerIdentity) }, [buyerIdentity])
+  useEffect(() => { if (persistReady.current) lsSet(LS_KEYS.points, astraPoints) }, [astraPoints])
+  useEffect(() => { if (persistReady.current) lsSet(LS_KEYS.stamps, bonusStamps) }, [bonusStamps])
+  useEffect(() => { if (persistReady.current) lsSet(LS_KEYS.orders, myOrders) }, [myOrders])
 
-  // AstraPay Welcome gate: once per browser, until connected or dismissed.
+  // AstraPay Welcome gate: once per browser, until connected or dismissed. Skipped in demo.
   useEffect(() => {
-    if (!hydrated || !seller) return
+    if (!hydrated || !seller || isDemoMode) return
     const seen = lsGet(LS_KEYS.seen, false)
     if (!isLinked && !seen) setShowWelcome(true)
-  }, [hydrated, seller, isLinked])
+  }, [hydrated, seller, isLinked, isDemoMode])
 
   const handleIdentityConnected = (identity: BuyerIdentity) => {
     setIsLinked(true)
     setBuyerIdentity(identity)
+    lsSet(LS_KEYS.linked, true)
+    lsSet(LS_KEYS.identity, identity)
     lsSet(LS_KEYS.seen, true)
     setShowWelcome(false)
+  }
+
+  const handleDemoLink = () => {
+    setIsLinked(true)
+    setBuyerIdentity(DEMO_IDENTITY)
+    lsSet(LS_KEYS.linked, true)
+    lsSet(LS_KEYS.identity, DEMO_IDENTITY)
+    lsSet(LS_KEYS.seen, true)
   }
 
   const handleGuest = () => {
@@ -2149,7 +2201,26 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
       <CartToast product={cartToastProduct} visible={cartToastVisible} />
       <SellerPreviewBanner slug={params.slug} />
 
-      {/* Sticky header */}
+      {/* Sticky header — store vs buyer context */}
+      {activeTab === 'akun' ? (
+        <div className="bg-white border-b border-gray-100 sticky top-0 z-40 px-4 pt-4 pb-3">
+          <div className="flex items-center gap-3">
+            <Link href={isDemoMode ? '/demo' : '/'} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
+              <ArrowLeft size={18} />
+            </Link>
+            <p className="font-extrabold text-gray-900 text-base">Akun Saya</p>
+          </div>
+        </div>
+      ) : activeTab === 'pesanan' ? (
+        <div className="bg-white border-b border-gray-100 sticky top-0 z-40 px-4 pt-4 pb-3">
+          <div className="flex items-center gap-3">
+            <Link href={isDemoMode ? '/demo' : '/'} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
+              <ArrowLeft size={18} />
+            </Link>
+            <p className="font-extrabold text-gray-900 text-base">Pesanan Saya</p>
+          </div>
+        </div>
+      ) : (
       <div className="bg-white border-b border-gray-100 sticky top-0 z-40 px-4 pt-4 pb-3">
         <div className="flex items-center gap-3 mb-3">
           <Link href={isDemoMode ? '/demo' : '/'} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
@@ -2192,7 +2263,11 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
             <div className="w-7 h-7 bg-astrapay-gold rounded-lg flex items-center justify-center flex-shrink-0">
               <Star size={14} className="text-white" fill="currentColor" />
             </div>
-            <p className="text-xs font-medium text-amber-800 flex-1">Dapatkan 50 poin tiap transaksi — tukar jadi saldo AstraPay</p>
+            <p className="text-xs font-medium text-amber-800 flex-1 leading-snug">
+              <span className="font-bold">Belanja pakai AstraPay</span>
+              <br />
+              Dapatkan AstraPoints &amp; Loyalty Stamp setiap transaksi.
+            </p>
             <button onClick={() => setPointsBannerOpen(false)} className="w-5 h-5 flex items-center justify-center rounded-full bg-amber-200/60 text-amber-600 hover:bg-amber-200 transition-colors flex-shrink-0">
               <X size={11} />
             </button>
@@ -2203,6 +2278,7 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
           className="w-full bg-gray-100 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-app-blue/20 focus:bg-white transition-colors"
         />
       </div>
+      )}
 
       {/* ── Beranda tab ── */}
       {activeTab === 'beranda' && (
@@ -2344,7 +2420,7 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
       {activeTab === 'pesanan' && <PesananPanel isDemoMode={isDemoMode} myOrders={myOrders} />}
 
       {/* ── Akun tab ── */}
-      {activeTab === 'akun' && <AkunPanel isDemoMode={isDemoMode} isLinked={isLinked} onLink={() => setIsLinked(true)} astraPoints={astraPoints} bonusStamps={bonusStamps} />}
+      {activeTab === 'akun' && <AkunPanel isDemoMode={isDemoMode} isLinked={isLinked} onLink={handleDemoLink} astraPoints={astraPoints} bonusStamps={bonusStamps} />}
 
       {/* Bottom nav */}
       <BottomNav
