@@ -1152,8 +1152,8 @@ function CheckoutModal({
                             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                             <p className="text-sm text-blue-100 font-medium">Menunggu pembayaran...</p>
                           </div>
-                          <p className="text-[10px] text-blue-200 text-center">
-                            Selesaikan pembayaran di tab AstraPay yang terbuka
+                          <p className="text-[10px] text-blue-200 text-center leading-relaxed">
+                            Selesaikan di tab AstraPay, lalu <strong>tutup tab tersebut</strong> untuk kembali ke sini — pesanan otomatis terkonfirmasi.
                           </p>
                         </>
                       ) : (
@@ -1197,11 +1197,25 @@ function CheckoutModal({
                         >
                           Buka AstraPay <ArrowRight size={16} />
                         </a>
-                        {astraPayTxId && (
-                          <p className="text-[10px] text-gray-300 font-mono">
-                            TX: {astraPayTxId}
-                          </p>
-                        )}
+                        <button
+                          onClick={async () => {
+                            if (!astraPayTxId) return
+                            try {
+                              const res = await fetch(`/api/astrapay/status?id=${astraPayTxId}&amount=${total}`)
+                              const { status } = await res.json()
+                              if (status === '00') {
+                                if (pollRef.current) clearInterval(pollRef.current)
+                                handleConfirm()
+                              } else {
+                                setAstraPayError('Pembayaran belum terdeteksi. Coba lagi dalam beberapa detik.')
+                                setTimeout(() => setAstraPayError(null), 3000)
+                              }
+                            } catch { /* ignore */ }
+                          }}
+                          className="w-full border border-green-400 text-green-500 font-semibold py-3 rounded-2xl text-sm hover:bg-green-50 transition-colors"
+                        >
+                          Sudah Bayar — Konfirmasi Pesanan
+                        </button>
                       </>
                     )}
                   </>
