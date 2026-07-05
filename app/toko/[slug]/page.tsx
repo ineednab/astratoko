@@ -492,6 +492,7 @@ function CheckoutModal({
   const [astraPayError,      setAstraPayError]      = useState<string | null>(null)
   const [astraPayBindingUrl, setAstraPayBindingUrl] = useState<string | null>(null)
   const [bindingTabOpened,   setBindingTabOpened]   = useState(false)
+  const [creatingPayment,    setCreatingPayment]    = useState(false)
   const fallbackRef       = useRef<ReturnType<typeof setTimeout> | null>(null)
   const startPaymentRef   = useRef<((token?: string) => void) | null>(null)
   const confirmingRef = useRef(false)
@@ -584,6 +585,7 @@ function CheckoutModal({
       const txId = `AT-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`
       setAstraPayTxId(txId)
       setAstraPayError(null)
+      setCreatingPayment(true)
 
       fetch('/api/astrapay/create', {
         method: 'POST',
@@ -610,9 +612,11 @@ function CheckoutModal({
               setTimeout(() => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }, 9000)
               return
             }
+            setCreatingPayment(false)
             setAstraPayError(data.error ?? 'Gagal membuat pembayaran')
             return
           }
+          setCreatingPayment(false)
           setAstraPayUrl(data.urlRedirect)
           window.open(data.urlRedirect, '_blank', 'noopener,noreferrer')
 
@@ -1150,7 +1154,9 @@ function CheckoutModal({
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                           </svg>
-                          <p className="text-sm text-blue-100">Memeriksa akun AstraPay...</p>
+                          <p className="text-sm text-blue-100">
+                            {creatingPayment ? 'Membuat tagihan AstraPay...' : 'Memeriksa akun AstraPay...'}
+                          </p>
                         </div>
                       )}
                     </div>
@@ -1171,9 +1177,9 @@ function CheckoutModal({
                           setAstraPayBindingUrl(null)
                           startPaymentRef.current?.()
                         }}
-                        className="w-full bg-green-500 hover:bg-green-400 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm"
+                        className="w-full bg-green-500 hover:bg-green-400 active:scale-95 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-all text-sm"
                       >
-                        Sudah selesai di AstraPay — Lanjut Bayar <ArrowRight size={16} />
+                        Sudah selesai — Lanjut Bayar <ArrowRight size={16} />
                       </button>
                     )}
                     {astraPayUrl && !astraPayBindingUrl && (
