@@ -450,21 +450,15 @@ function CheckoutModal({
   cart,
   seller,
   onClose,
-  onRemove,
-  onUpdateQty,
   isDemoMode,
   isLinked,
-  onLink,
   onDemoProgress,
 }: {
   cart: CartItem[]
   seller: Seller
   onClose: () => void
-  onRemove: (productId: string) => void
-  onUpdateQty: (productId: string, qty: number) => void
   isDemoMode?: boolean
   isLinked?: boolean
-  onLink?: () => void
   onDemoProgress?: (p: DemoProgress) => void
 }) {
   const DEMO_BUYERS = ['Justin Bieber', 'Dua Lipa', 'Sabrina Carpenter', 'Taylor Swift', 'Ariana Grande', 'Billie Eilish']
@@ -1854,11 +1848,8 @@ export default function StorefrontPage({ params }: { params: { slug: string } })
           cart={cart}
           seller={seller}
           onClose={() => { setIsCheckoutOpen(false); setCart([]) }}
-          onRemove={removeFromCart}
-          onUpdateQty={updateQuantity}
           isDemoMode={isDemoMode}
           isLinked={isLinked}
-          onLink={() => setIsLinked(true)}
           onDemoProgress={setDemoProgress}
         />
       )}
