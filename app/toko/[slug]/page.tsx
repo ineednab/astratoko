@@ -620,19 +620,27 @@ function CheckoutModal({
           setAstraPayUrl(data.urlRedirect)
           window.open(data.urlRedirect, '_blank', 'noopener,noreferrer')
 
-          pollRef.current = setInterval(async () => {
+          const checkStatus = async () => {
             try {
               const res = await fetch(`/api/astrapay/status?id=${txId}&amount=${total}`)
               const { status } = await res.json()
               if (status === '00') {
                 if (pollRef.current) clearInterval(pollRef.current)
+                document.removeEventListener('visibilitychange', onVisible)
                 handleConfirm()
               } else if (status === '05' || status === '06') {
                 if (pollRef.current) clearInterval(pollRef.current)
+                document.removeEventListener('visibilitychange', onVisible)
                 setStep('payment_failed')
               }
             } catch { /* keep polling */ }
-          }, 3000)
+          }
+
+          // Cek langsung saat user balik ke tab ini
+          const onVisible = () => { if (document.visibilityState === 'visible') checkStatus() }
+          document.addEventListener('visibilitychange', onVisible)
+
+          pollRef.current = setInterval(checkStatus, 3000)
         })
         .catch(() => {
           if (isDemoMode) {

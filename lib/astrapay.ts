@@ -4,6 +4,7 @@ import fs from 'fs'
 const BASE_URL      = process.env.ASTRAPAY_SANDBOX_BASE_URL      ?? 'https://sandbox.astrapay.com'
 const CLIENT_ID     = process.env.ASTRAPAY_SANDBOX_CLIENT_ID     ?? ''
 const CLIENT_SECRET = process.env.ASTRAPAY_SANDBOX_CLIENT_SECRET ?? ''
+const MERCHANT_ID   = process.env.ASTRAPAY_SANDBOX_MERCHANT_ID   ?? CLIENT_ID
 
 function loadPrivateKey(): string {
   const path = process.env.ASTRAPAY_PRIVATE_KEY_PATH
@@ -63,10 +64,84 @@ export async function getAccessToken(): Promise<string> {
   return data.access_token as string
 }
 
+// Normalize phone to E.164 without '+' (e.g. "08511xxx" → "628511xxx")
+function normalizePhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '')
+  if (digits.startsWith('0')) return '62' + digits.slice(1)
+  if (digits.startsWith('62')) return digits
+  return '62' + digits
+}
+
+export interface RegisterBindingParams {
+  phoneNo: string
+  externalUid: string
+  finishBindingUrl: string
+  name?: string
+  email?: string
+}
+
+export interface RegisterBindingResult {
+  redirectUrl?: string
+  authCode?: string
+  referenceNo?: string
+  error?: string
+  raw?: unknown
+}
+
+export async function registerAccountBinding(params: RegisterBindingParams): Promise<RegisterBindingResult> {
+  try {
+    const accessToken = await getAccessToken()
+    const ts   = snapTimestamp()
+    const path = '/snap-service/snap/v1.0/registration-account-binding'
+
+    const bodyObj: Record<string, unknown> = {
+      merchantId: MERCHANT_ID,
+      phoneNo:    normalizePhone(params.phoneNo),
+      additionalInfo: {
+        finishBindingUrl: params.finishBindingUrl,
+        externalUid:      params.externalUid,
+        ...(params.name  ? { name:  params.name  } : {}),
+        ...(params.email ? { email: params.email } : {}),
+      },
+    }
+    const body = JSON.stringify(bodyObj)
+    const sig  = signService('POST', path, accessToken, body, ts)
+
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type':  'application/json',
+      'X-TIMESTAMP':   ts,
+      'X-SIGNATURE':   sig,
+      'X-PARTNER-ID':  CLIENT_ID,
+      'X-EXTERNAL-ID': externalId(),
+      'X-DEVICE-ID':   'AstraToko-Web',
+      'CHANNEL-ID':    '01207',
+    }
+
+    const res = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers, body })
+    const data = await res.json()
+
+    if (!res.ok) {
+      console.error('[AstraPay Bind] request failed with status', res.status)
+      return { error: JSON.stringify(data), raw: data }
+    }
+    return {
+      redirectUrl: data.redirectUrl,
+      authCode:    data.additionalInfo?.authCode,
+      referenceNo: data.referenceNo,
+    }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
 export interface CreatePaymentParams {
   merchantTransactionId: string
   amount: number
   description: string
+  phoneNo?: string
+  bankCardToken?: string
+  finishPaymentUrl?: string
 }
 
 export interface CreatePaymentResult {
@@ -89,7 +164,7 @@ export async function createPayment(params: CreatePaymentParams): Promise<Create
     const validUpToStr = `${wib.getUTCFullYear()}-${pad(wib.getUTCMonth()+1)}-${pad(wib.getUTCDate())}` +
       `T${pad(wib.getUTCHours())}:${pad(wib.getUTCMinutes())}:${pad(wib.getUTCSeconds())}+07:00`
 
-    const body = JSON.stringify({
+    const bodyObj: Record<string, unknown> = {
       partnerReferenceNo: params.merchantTransactionId,
       validUpTo: validUpToStr,
       amount: {
@@ -98,8 +173,13 @@ export async function createPayment(params: CreatePaymentParams): Promise<Create
       },
       additionalInfo: {
         description: params.description,
+        ...(params.phoneNo          ? { mobilePhone:       normalizePhone(params.phoneNo) } : {}),
+        ...(params.finishPaymentUrl ? { finishPaymentUrl:  params.finishPaymentUrl }        : {}),
       },
-    })
+    }
+    if (params.bankCardToken) bodyObj.bankCardToken = params.bankCardToken
+
+    const body = JSON.stringify(bodyObj)
 
     const sig = signService('POST', path, accessToken, body, ts)
 
